@@ -1,0 +1,22 @@
+# Gitignore for Azure Speech API
+.env
+.python-version
+__pycache__/
+venv/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.idea/
+.vscode/
+.DS_Store

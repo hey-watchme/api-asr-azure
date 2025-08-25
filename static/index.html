@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Azure Speech Services API</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #0078d4;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .upload-area {
+            border: 2px dashed #0078d4;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            background-color: #f8f9fa;
+        }
+        .upload-area:hover {
+            background-color: #e9ecef;
+        }
+        input[type="file"] {
+            margin: 20px 0;
+        }
+        button {
+            background-color: #0078d4;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #106ebe;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 5px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #0078d4;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-left-color: #dc3545;
+            color: #721c24;
+        }
+        .loading {
+            text-align: center;
+            color: #0078d4;
+        }
+        .api-info {
+            background-color: #e7f3ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 Azure Speech Services API</h1>
+        
+        <div class="api-info">
+            <strong>API エンドポイント:</strong> POST /analyze/azure<br>
+            <strong>対応形式:</strong> .wav, .mp3, .m4a<br>
+            <strong>最大ファイルサイズ:</strong> 25MB<br>
+            <strong>最大音声長:</strong> 5分
+        </div>
+
+        <div class="upload-area">
+            <h3>音声ファイルをアップロード</h3>
+            <input type="file" id="audioFile" accept=".wav,.mp3,.m4a">
+            <br>
+            <label>
+                <input type="checkbox" id="detailedMode"> 詳細モード（信頼度・統計情報）
+            </label>
+            <br>
+            <label>
+                <input type="checkbox" id="highAccuracyMode"> 高精度モード（時間がかかりますが精度向上）
+            </label>
+            <br><br>
+            <button onclick="uploadFile()" id="uploadBtn">文字起こし実行</button>
+        </div>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function uploadFile() {
+            const fileInput = document.getElementById('audioFile');
+            const resultDiv = document.getElementById('result');
+            const uploadBtn = document.getElementById('uploadBtn');
+            
+            if (!fileInput.files[0]) {
+                showResult('ファイルを選択してください。', true);
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const allowedTypes = ['audio/wav', 'audio/mpeg', 'audio/mp4', 'audio/x-m4a'];
+            
+            if (!allowedTypes.includes(file.type) && !file.name.match(/\.(wav|mp3|m4a)$/i)) {
+                showResult('サポートされていないファイル形式です。.wav, .mp3, .m4a ファイルを選択してください。', true);
+                return;
+            }
+
+            if (file.size > 25 * 1024 * 1024) {
+                showResult('ファイルサイズが25MBを超えています。', true);
+                return;
+            }
+
+            uploadBtn.disabled = true;
+            showResult('音声を処理中です...', false, true);
+
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            const detailedMode = document.getElementById('detailedMode').checked;
+            const highAccuracyMode = document.getElementById('highAccuracyMode').checked;
+            
+            let url = '/analyze/azure?';
+            const params = [];
+            if (detailedMode) params.push('detailed=true');
+            if (highAccuracyMode) params.push('high_accuracy=true');
+            url += params.join('&');
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    let resultText = `文字起こし結果: ${data.transcription}`;
+                    
+                    if (data.processing_time) {
+                        resultText += `<br><br><strong>処理時間:</strong> ${data.processing_time}秒`;
+                    }
+                    
+                    if (data.confidence) {
+                        resultText += `<br><strong>信頼度:</strong> ${(data.confidence * 100).toFixed(1)}%`;
+                    }
+                    
+                    if (data.word_count) {
+                        resultText += `<br><strong>単語数:</strong> ${data.word_count}語`;
+                    }
+                    
+                    if (data.estimated_duration) {
+                        resultText += `<br><strong>推定音声時間:</strong> ${data.estimated_duration}秒`;
+                    }
+                    
+                    if (data.mode) {
+                        resultText += `<br><strong>処理モード:</strong> ${data.mode === 'high_accuracy' ? '高精度モード' : data.mode}`;
+                    }
+                    
+                    showResult(resultText, false);
+                } else {
+                    showResult(`エラー: ${data.detail}`, true);
+                }
+            } catch (error) {
+                showResult(`ネットワークエラー: ${error.message}`, true);
+            } finally {
+                uploadBtn.disabled = false;
+            }
+        }
+
+        function showResult(message, isError = false, isLoading = false) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = message;
+            resultDiv.className = 'result';
+            
+            if (isError) {
+                resultDiv.classList.add('error');
+            } else if (isLoading) {
+                resultDiv.classList.add('loading');
+            }
+        }
+
+        // ファイル選択時の処理
+        document.getElementById('audioFile').addEventListener('change', function() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '';
+            resultDiv.className = '';
+        });
+        
+        // 高精度モード選択時の警告
+        document.getElementById('highAccuracyMode').addEventListener('change', function() {
+            if (this.checked) {
+                showResult('⚠️ 高精度モードは処理に時間がかかります（最大10分）', false, true);
+            } else {
+                const resultDiv = document.getElementById('result');
+                resultDiv.innerHTML = '';
+                resultDiv.className = '';
+            }
+        });
+    </script>
+</body>
+</html> 

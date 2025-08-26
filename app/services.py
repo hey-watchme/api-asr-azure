@@ -4,12 +4,51 @@ import threading
 import time
 import azure.cognitiveservices.speech as speechsdk
 from fastapi import HTTPException
-from typing import BinaryIO, Dict, Any
+from typing import BinaryIO, Dict, Any, List, Set
+import boto3
+from botocore.exceptions import ClientError
+from supabase import create_client, Client
+from dotenv import load_dotenv
+import logging
+
+# 環境変数読み込み
+load_dotenv()
+
+# ロギング設定
+logger = logging.getLogger(__name__)
 
 class AzureSpeechService:
     def __init__(self):
+        # Azure Speech Service設定
         self.speech_key = os.getenv("AZURE_SPEECH_KEY", "your-key-here")
         self.service_region = os.getenv("AZURE_SERVICE_REGION", "your-region-here")
+        
+        # Supabase設定
+        supabase_url = os.getenv('SUPABASE_URL')
+        supabase_key = os.getenv('SUPABASE_KEY')
+        
+        if not supabase_url or not supabase_key:
+            raise ValueError("SUPABASE_URLおよびSUPABASE_KEYが設定されていません")
+        
+        self.supabase: Client = create_client(supabase_url, supabase_key)
+        print(f"Supabase接続設定完了: {supabase_url}")
+        
+        # AWS S3設定
+        aws_access_key_id = os.getenv('AWS_ACCESS_KEY_ID')
+        aws_secret_access_key = os.getenv('AWS_SECRET_ACCESS_KEY')
+        self.s3_bucket_name = os.getenv('S3_BUCKET_NAME', 'watchme-vault')
+        aws_region = os.getenv('AWS_REGION', 'us-east-1')
+        
+        if not aws_access_key_id or not aws_secret_access_key:
+            raise ValueError("AWS_ACCESS_KEY_IDおよびAWS_SECRET_ACCESS_KEYが設定されていません")
+        
+        self.s3_client = boto3.client(
+            's3',
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            region_name=aws_region
+        )
+        print(f"AWS S3接続設定完了: バケット={self.s3_bucket_name}, リージョン={aws_region}")
         
         # Azure Speech Config
         self.speech_config = speechsdk.SpeechConfig(
@@ -259,6 +298,257 @@ class AzureSpeechService:
                 status_code=500,
                 detail=f"音声認識で予期しないエラーが発生しました: {error_summary}"
             )
+    
+    async def fetch_and_transcribe_files(self, request):
+        """S3から音声ファイルを取得してAzure Speech Serviceで文字起こし実行"""
+        from app.models import FetchAndTranscribeRequest  # 循環インポート回避
+        
+        start_time = time.time()
+        
+        # リクエストの処理
+        if request.device_id and request.local_date:
+            # 新しいインターフェース: device_id + local_date + time_blocks
+            logger.info(f"新インターフェース使用: device_id={request.device_id}, local_date={request.local_date}, time_blocks={request.time_blocks}")
+            
+            # audio_filesテーブルから該当するファイルを検索
+            query = self.supabase.table('audio_files') \
+                .select('file_path, device_id, recorded_at, local_date, time_block, transcriptions_status') \
+                .eq('device_id', request.device_id) \
+                .eq('local_date', request.local_date) \
+                .eq('transcriptions_status', 'pending')
+            
+            # time_blocksが指定されている場合はフィルタを追加
+            if request.time_blocks:
+                query = query.in_('time_block', request.time_blocks)
+            
+            # クエリ実行
+            try:
+                response = query.execute()
+                audio_files = response.data
+                logger.info(f"audio_filesテーブルから{len(audio_files)}件のファイルを取得")
+            except Exception as e:
+                logger.error(f"audio_filesテーブルのクエリエラー: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"データベースクエリエラー: {str(e)}")
+            
+            # file_pathsリストを構築
+            file_paths = [file['file_path'] for file in audio_files]
+            
+            if not file_paths:
+                execution_time = time.time() - start_time
+                return {
+                    "status": "success",
+                    "summary": {
+                        "total_files": 0,
+                        "already_completed": 0,
+                        "pending_processed": 0,
+                        "errors": 0
+                    },
+                    "device_id": request.device_id,
+                    "local_date": request.local_date,
+                    "time_blocks_requested": request.time_blocks,
+                    "processed_time_blocks": [],
+                    "execution_time_seconds": round(execution_time, 1),
+                    "message": "処理対象のファイルがありません（全て処理済みまたは該当なし）"
+                }
+        
+        elif request.file_paths:
+            # 既存のインターフェース: file_pathsを直接指定
+            logger.info(f"既存インターフェース使用: file_paths={len(request.file_paths)}件")
+            file_paths = request.file_paths
+            audio_files = None  # 後方互換性のため
+        
+        else:
+            # ここに来ることはない（model_validatorで検証済み）
+            raise HTTPException(
+                status_code=400,
+                detail="device_id + local_dateまたはfile_pathsのどちらかを指定してください"
+            )
+        
+        if not file_paths:
+            # file_pathsが空の場合は、処理対象なしとして正常終了
+            execution_time = time.time() - start_time
+            
+            return {
+                "status": "success",
+                "summary": {
+                    "total_files": 0,
+                    "already_completed": 0,
+                    "pending_processed": 0,
+                    "errors": 0
+                },
+                "processed_files": [],
+                "execution_time_seconds": round(execution_time, 1),
+                "message": "処理対象のファイルがありません"
+            }
+        
+        logger.info(f"処理対象: {len(file_paths)}件のファイル")
+        
+        # 処理対象ファイルの情報を構築
+        files_to_process = []
+        device_ids = set()
+        dates = set()
+        
+        # 新インターフェースの場合
+        if audio_files:
+            for audio_file in audio_files:
+                files_to_process.append({
+                    'file_path': audio_file['file_path'],
+                    'device_id': audio_file['device_id'],
+                    'local_date': audio_file['local_date'],
+                    'time_block': audio_file['time_block']
+                })
+                device_ids.add(audio_file['device_id'])
+                dates.add(audio_file['local_date'])
+        
+        # 既存インターフェースの場合（file_pathから情報を抽出）
+        else:
+            for file_path in file_paths:
+                # file_pathから情報を抽出
+                # 例: files/d067d407-cf73-4174-a9c1-d91fb60d64d0/2025-07-19/14-30/audio.wav
+                parts = file_path.split('/')
+                if len(parts) >= 5:
+                    device_id = parts[1]  # d067d407-cf73-4174-a9c1-d91fb60d64d0
+                    date_part = parts[2]  # 2025-07-19
+                    time_part = parts[3]  # 14-30
+                    
+                    device_ids.add(device_id)
+                    dates.add(date_part)
+                    
+                    files_to_process.append({
+                        'file_path': file_path,
+                        'device_id': device_id,
+                        'local_date': date_part,
+                        'time_block': time_part
+                    })
+        
+        # 実際の音声ダウンロードと文字起こし処理
+        # 処理結果を記録
+        successfully_transcribed = []
+        error_files = []
+        
+        for audio_file in files_to_process:
+            try:
+                file_path = audio_file['file_path']
+                time_block = audio_file['time_block']
+                local_date = audio_file['local_date']
+                device_id = audio_file['device_id']
+                
+                # 一時ファイルに音声データをダウンロード
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+                    tmp_file_path = tmp_file.name
+                    
+                    try:
+                        # S3からファイルをダウンロード（file_pathをそのまま使用）
+                        self.s3_client.download_file(self.s3_bucket_name, file_path, tmp_file_path)
+                        
+                        # Azure Speech Serviceで文字起こし
+                        with open(tmp_file_path, 'rb') as audio_file_handle:
+                            transcription_result = await self.transcribe_audio(
+                                audio_file_handle, 
+                                os.path.basename(file_path),
+                                detailed=False,
+                                high_accuracy=True  # Azure Speech Service高精度モード使用
+                            )
+                        
+                        transcription = transcription_result["transcription"].strip()
+                        
+                        # vibe_whisperテーブルに保存（空の文字起こし結果も保存）
+                        data = {
+                            "device_id": device_id,
+                            "date": local_date,  # リクエストから受け取った日付をそのまま使用
+                            "time_block": time_block,
+                            "transcription": transcription if transcription else ""
+                        }
+                        
+                        # upsert（既存データは更新、新規データは挿入）
+                        response = self.supabase.table('vibe_whisper').upsert(data).execute()
+                        
+                        # Supabaseからの応答を詳細にログ出力
+                        logger.info(f"Supabase upsert response data: {response.data}")
+                        logger.info(f"Supabase upsert response count: {response.count}")
+                        
+                        # 応答にエラーが含まれていないか、データが空でないかを確認
+                        if not response.data:
+                            logger.error("❌ Supabase returned an empty response or an error.")
+                            logger.error(f"   - Full response object: {response}")
+                            # エラーとして扱い、処理を中断
+                            raise Exception("Supabase upsert failed with empty response.")
+                        
+                        # audio_filesテーブルのtranscriptions_statusをcompletedに更新
+                        try:
+                            update_response = self.supabase.table('audio_files') \
+                                .update({'transcriptions_status': 'completed'}) \
+                                .eq('file_path', file_path) \
+                                .execute()
+                            
+                            # 更新が成功したかチェック
+                            if update_response.data:
+                                logger.info(f"✅ audio_filesテーブルのステータス更新成功: {len(update_response.data)}件更新")
+                                logger.info(f"   file_path: {file_path}")
+                            else:
+                                logger.warning(f"⚠️ audio_filesテーブルのステータス更新: 対象レコードが見つかりません")
+                                logger.warning(f"   file_path: {file_path}")
+                                
+                        except Exception as update_error:
+                            logger.error(f"❌ audio_filesテーブルのステータス更新エラー: {str(update_error)}")
+                            logger.error(f"   file_path: {file_path}")
+                        
+                        successfully_transcribed.append({
+                            'file_path': file_path,
+                            'time_block': time_block
+                        })
+                        logger.info(f"✅ {file_path}: Azure Speech Service文字起こし完了・Supabase保存済み")
+                    
+                    finally:
+                        # 一時ファイルを削除
+                        if os.path.exists(tmp_file_path):
+                            os.unlink(tmp_file_path)
+            
+            except ClientError as e:
+                error_msg = f"{audio_file['file_path']}: S3エラー - {str(e)}"
+                logger.error(f"❌ {error_msg}")
+                error_files.append(audio_file)
+            
+            except Exception as e:
+                logger.error(f"❌ {audio_file['file_path']}: エラー - {str(e)}")
+                error_files.append(audio_file)
+        
+        # 処理結果を返す
+        execution_time = time.time() - start_time
+        
+        # レスポンスの構築（インターフェースによって異なる）
+        if request.device_id and request.local_date:
+            # 新インターフェースのレスポンス
+            return {
+                "status": "success",
+                "summary": {
+                    "total_files": len(file_paths),
+                    "pending_processed": len(successfully_transcribed),
+                    "errors": len(error_files)
+                },
+                "device_id": request.device_id,
+                "local_date": request.local_date,
+                "time_blocks_requested": request.time_blocks,
+                "processed_time_blocks": [f['time_block'] for f in successfully_transcribed],
+                "error_time_blocks": [f['time_block'] for f in error_files] if error_files else None,
+                "execution_time_seconds": round(execution_time, 1),
+                "message": f"{len(file_paths)}件中{len(successfully_transcribed)}件をAzure Speech Serviceで正常に処理しました"
+            }
+        else:
+            # 既存インターフェースのレスポンス（後方互換性）
+            return {
+                "status": "success",
+                "summary": {
+                    "total_files": len(file_paths),
+                    "pending_processed": len(successfully_transcribed),
+                    "errors": len(error_files)
+                },
+                "processed_files": [f['file_path'] for f in successfully_transcribed],
+                "processed_time_blocks": [f['time_block'] for f in successfully_transcribed],
+                "error_files": [f['file_path'] for f in error_files] if error_files else None,
+                "execution_time_seconds": round(execution_time, 1),
+                "message": f"{len(file_paths)}件中{len(successfully_transcribed)}件をAzure Speech Serviceで正常に処理しました"
+            }
 
 # サービスインスタンス
 azure_speech_service = AzureSpeechService() 

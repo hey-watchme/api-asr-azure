@@ -1,6 +1,11 @@
 from fastapi import APIRouter, File, UploadFile, HTTPException, Query
-from app.models import TranscriptionResponse
+from app.models import TranscriptionResponse, FetchAndTranscribeRequest
 from app.services import azure_speech_service
+import time
+import logging
+
+# ロギング設定
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -44,4 +49,26 @@ async def analyze_audio(
     except HTTPException:
         raise
     except Exception as e:
+        raise HTTPException(status_code=500, detail=f"予期しないエラーが発生しました: {str(e)}")
+
+@router.post("/fetch-and-transcribe")
+async def fetch_and_transcribe(request: FetchAndTranscribeRequest):
+    """WatchMeシステムのメイン処理エンドポイント（Azure Speech Service版）"""
+    start_time = time.time()
+    
+    # サポートされているモデルの確認
+    if request.model not in ["azure"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"サポートされていないモデル: {request.model}. 対応モデル: azure"
+        )
+    
+    # Azure Speech Service処理を実行
+    try:
+        result = await azure_speech_service.fetch_and_transcribe_files(request)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"fetch_and_transcribe エラー: {str(e)}")
         raise HTTPException(status_code=500, detail=f"予期しないエラーが発生しました: {str(e)}") 

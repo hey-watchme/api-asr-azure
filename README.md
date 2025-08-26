@@ -4,6 +4,12 @@ Azure Speech Servicesを使用した音声文字起こしAPIです。WatchMeプ�
 
 ## 📋 更新履歴
 
+### 2025年8月26日 - v1.46.0
+- **WatchMeシステム統合機能を実装**: Supabase + AWS S3との完全統合
+- **新エンドポイント追加**: `/fetch-and-transcribe` でデバイスIDと日付による効率的なバッチ処理
+- **依存関係追加**: boto3とsupabase Python SDKを追加
+- **後方互換性保持**: 既存のfile_pathsインターフェースも継続サポート
+
 ### 2025年8月26日 - v1.45.0
 - **Azure Speech SDK を最新版にアップグレード**: 1.34.0 → 1.45.0
 - **音声認識の問題を解決**: SDK更新により認識精度が大幅に向上
@@ -35,11 +41,12 @@ pip install -r requirements.txt
 AZURE_SPEECH_KEY=your-azure-speech-key
 AZURE_SERVICE_REGION=japaneast
 
-# Supabase設定（本番環境で必要）
+# WatchMeシステム統合設定（v1.46.0で必須）
+# Supabase設定 - audio_filesテーブルからファイル情報を取得
 SUPABASE_URL=your-supabase-url
 SUPABASE_KEY=your-supabase-key
 
-# AWS S3設定（本番環境で必要）
+# AWS S3設定 - 音声ファイルの取得先
 AWS_ACCESS_KEY_ID=your-access-key-id
 AWS_SECRET_ACCESS_KEY=your-secret-access-key
 S3_BUCKET_NAME=watchme-vault
@@ -152,13 +159,27 @@ curl https://api.hey-watch.me/vibe-transcriber-v2/
 
 #### 2. 実際のファイルで処理テスト
 
+**新しいインターフェース（推奨）:**
+```bash
+curl -X POST "https://api.hey-watch.me/vibe-transcriber-v2/fetch-and-transcribe" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "device_id": "d067d407-cf73-4174-a9c1-d91fb60d64d0",
+    "local_date": "2025-08-26",
+    "time_blocks": ["09-00", "09-30"],
+    "model": "azure"
+  }'
+```
+
+**既存インターフェース（後方互換性）:**
 ```bash
 curl -X POST "https://api.hey-watch.me/vibe-transcriber-v2/fetch-and-transcribe" \
   -H "Content-Type: application/json" \
   -d '{
     "file_paths": [
       "files/d067d407-cf73-4174-a9c1-d91fb60d64d0/2025-08-25/23-00/audio.wav"
-    ]
+    ],
+    "model": "azure"
   }'
 ```
 
@@ -182,16 +203,33 @@ docker logs vibe-transcriber-v2 --tail 50 | grep "認識"
 
 ### POST /fetch-and-transcribe
 
-S3から音声ファイルをダウンロードして文字起こし（本番環境用）
+WatchMeシステム統合エンドポイント - Supabaseからファイル情報を取得してS3から音声ファイルをダウンロード後、文字起こし実行
+
+#### 新しいインターフェース（v1.46.0〜推奨）
+
+**リクエスト:**
+```json
+{
+  "device_id": "d067d407-cf73-4174-a9c1-d91fb60d64d0",
+  "local_date": "2025-08-26",
+  "time_blocks": ["09-00", "09-30", "10-00"],  // オプション: 特定の時間帯のみ処理
+  "model": "azure"
+}
+```
+
+#### 既存インターフェース（後方互換性維持）
 
 **リクエスト:**
 ```json
 {
   "file_paths": [
     "files/device_id/2025-08-25/23-00/audio.wav"
-  ]
+  ],
+  "model": "azure"
 }
 ```
+
+#### 共通レスポンス
 
 **レスポンス:**
 ```json
@@ -213,6 +251,9 @@ S3から音声ファイルをダウンロードして文字起こし（本番環
 - **Python**: 3.11以上
 - **フレームワーク**: FastAPI
 - **音声認識**: Azure Speech Services SDK 1.45.0
+- **統合システム**: WatchMe Platform (v1.46.0〜)
+  - **データベース**: Supabase (Python SDK 2.10.0)
+  - **ファイルストレージ**: AWS S3 (boto3 1.35.57)
 - **対応形式**: .wav, .mp3, .m4a
 - **言語**: 日本語 (ja-JP)
 - **ポート**: 

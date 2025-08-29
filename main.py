@@ -49,4 +49,6 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8008) 
+    # 本番環境はポート8013、ローカルはPORT環境変数または8008
+    port = int(os.getenv("PORT", 8013))
+    uvicorn.run(app, host="0.0.0.0", port=port) 

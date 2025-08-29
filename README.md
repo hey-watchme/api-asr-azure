@@ -1,8 +1,23 @@
-# Azure Speech Services API v1
+# Azure Speech Services API v1 (vibe-transcriber-v2)
 
 Azure Speech Servicesを使用した音声文字起こしAPIです。WatchMeプラットフォームの一部として動作します。
 
+> **注意**: 本番環境では`vibe-transcriber-v2`という名前でECRからDockerイメージとしてデプロイされています。
+
+## 🐳 本番環境情報
+
+- **ECRリポジトリ**: `754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-api-transcriber-v2`
+- **コンテナ名**: `vibe-transcriber-v2`
+- **ポート**: 8013
+- **公開URL**: `https://api.hey-watch.me/vibe-transcriber-v2/`
+- **デプロイ方式**: ECRからDockerイメージをプル
+
 ## 📋 更新履歴
+
+### 2025年8月29日 - v1.47.0
+- **Docker/ECR設定の整理**: 本番デプロイ用の設定ファイルを追加
+- **watchme-network対応**: docker-compose.prod.ymlを`external: true`設定に
+- **運用の明確化**: ECRベースのデプロイ構成を文書化
 
 ### 2025年8月26日 - v1.46.0
 - **WatchMeシステム統合機能を実装**: Supabase + AWS S3との完全統合
@@ -97,7 +112,53 @@ uvicorn main:app --host 0.0.0.0 --port 8008 --reload
 - **エンドポイント**: https://api.hey-watch.me/vibe-transcriber-v2/
 - **EC2サーバー**: 3.24.16.82
 
+## 🚢 本番環境デプロイ
+
+### 前提条件
+1. **watchme-networkインフラストラクチャが起動済み**
+   ```bash
+   cd /home/ubuntu/watchme-server-configs
+   docker-compose -f docker-compose.infra.yml up -d
+   ```
+
+2. **環境変数ファイル（.env）が配置済み**
+   - `/home/ubuntu/vibe-transcriber-v2/.env`
+
 ### デプロイ手順
+
+#### 方法1: run-prod.shを使用（推奨）
+```bash
+# EC2サーバー上で実行
+cd /home/ubuntu/vibe-transcriber-v2
+./run-prod.sh
+```
+
+#### 方法2: 手動でdocker-composeを使用
+```bash
+# ECRから最新イメージをプル
+aws ecr get-login-password --region ap-southeast-2 | \
+  docker login --username AWS --password-stdin \
+  754724220380.dkr.ecr.ap-southeast-2.amazonaws.com
+
+docker pull 754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-api-transcriber-v2:latest
+
+# コンテナを起動
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+### 動作確認
+```bash
+# ヘルスチェック
+curl http://localhost:8013/
+
+# コンテナ状態確認
+docker ps | grep vibe-transcriber
+
+# ログ確認
+docker logs -f vibe-transcriber-v2
+```
+
+### 旧デプロイ手順（参考）
 
 #### 1. SDKアップグレード（緊急修正の場合）
 

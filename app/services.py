@@ -237,11 +237,15 @@ class AzureSpeechService:
                 self._handle_recognition_errors(recognition_errors)
             
             else:
-                # タイムアウトまたは不明なエラー
-                raise HTTPException(
-                    status_code=408, 
-                    detail=f"音声認識がタイムアウトしました（{timeout}秒）"
-                )
+                # 認識結果が空の場合（発話なし）
+                return {
+                    "transcription": "",  # 空文字列として返す（「発話なし」は呼び出し側で設定）
+                    "processing_time": round(time.time() - start_time, 2),
+                    "confidence": 0.0,
+                    "word_count": 0,
+                    "estimated_duration": 0.0,
+                    "no_speech_detected": True  # 発話なしフラグを追加
+                }
                 
         except Exception as e:
             # 一時ファイルが残っている場合は削除
@@ -452,12 +456,15 @@ class AzureSpeechService:
                         
                         transcription = transcription_result["transcription"].strip()
                         
-                        # vibe_whisperテーブルに保存（空の文字起こし結果も保存）
+                        # 発話なしの判定と明確な区別
+                        final_transcription = transcription if transcription else "発話なし"
+                        
+                        # vibe_whisperテーブルに保存（発話なしの場合は明確に「発話なし」を保存）
                         data = {
                             "device_id": device_id,
                             "date": local_date,  # リクエストから受け取った日付をそのまま使用
                             "time_block": time_block,
-                            "transcription": transcription if transcription else ""
+                            "transcription": final_transcription
                         }
                         
                         # upsert（既存データは更新、新規データは挿入）
@@ -497,7 +504,12 @@ class AzureSpeechService:
                             'file_path': file_path,
                             'time_block': time_block
                         })
-                        logger.info(f"✅ {file_path}: Azure Speech Service文字起こし完了・Supabase保存済み")
+                        
+                        # 処理結果に応じたログ出力
+                        if transcription:
+                            logger.info(f"✅ {file_path}: 文字起こし完了・Supabase保存済み (Azure Speech Service) - 発話内容: {len(transcription)}文字")
+                        else:
+                            logger.info(f"✅ {file_path}: 処理完了・発話なし・Supabase保存済み (Azure Speech Service) - 「発話なし」として保存")
                     
                     finally:
                         # 一時ファイルを削除

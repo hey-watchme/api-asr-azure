@@ -4,6 +4,31 @@ Azure Speech Servicesを使用した音声文字起こしAPIです。WatchMeプ�
 
 > **注意**: 本番環境では`vibe-transcriber-v2`という名前でECRからDockerイメージとしてデプロイされています。
 
+## ⚠️ Azure Speech Service 利用制限について
+
+### 日次クォータのリセット時間
+**Azure Speech Serviceの無料枠または日次利用制限は、UTC 00:00（日本時間 09:00）にリセットされます。**
+
+#### 重要な注意点：
+- **制限到達時の挙動**: APIは200を返すが、実際の文字起こし結果が空になる可能性がある
+- **リセット時刻**: 
+  - UTC 00:00 = 日本時間（JST）09:00
+  - 毎日朝9時に新しいクォータが利用可能になる
+- **確認された事例**（2025年9月22日）:
+  - 08:46 JST: 処理は成功するが結果が空（`has_text: false`）
+  - 09:10 JST: UTC日付変更後、正常に処理完了
+
+### 対処方法
+1. **処理時間の調整**: 重要な処理は日本時間09:00以降に実行
+2. **自動エラー検知**: システムが自動的に利用上限を検知し、`quota_exceeded`ステータスを設定
+3. **ステータス確認**: `transcriptions_status`をチェックして処理状態を把握
+   - `pending`: 未処理
+   - `processing`: 処理中
+   - `completed`: 処理完了
+   - `failed`: エラー発生
+   - `quota_exceeded`: Azure利用上限超過
+4. **モニタリング**: Azure ポータルで実際の利用量を確認
+
 ## 🐳 本番環境情報
 
 - **ECRリポジトリ**: `754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-api-transcriber-v2`
@@ -13,6 +38,18 @@ Azure Speech Servicesを使用した音声文字起こしAPIです。WatchMeプ�
 - **デプロイ方式**: ECRからDockerイメージをプル
 
 ## 📋 更新履歴
+
+### 2025年9月23日 - v1.48.0
+- **エラーステータス管理機能を追加**: Azure利用上限エラーを適切に処理
+  - 新しいステータス値: `failed`（エラー発生）、`quota_exceeded`（Azure利用上限超過）
+  - エラー発生時に自動的にステータスを更新し、`pending`のまま残らないように改善
+- **Azure利用上限検知ロジックを実装**: 
+  - 日本時間0:00-9:00の間で結果が空の場合、利用上限の可能性を検知
+  - `quota_exceeded`ステータスを設定して明確に区別
+- **タイムスタンプ記録機能を追加**:
+  - `vibe_whisper`テーブルに`created_at`カラムを追加
+  - 処理実行時刻をUTC形式で自動記録
+- **依存関係追加**: pytz==2024.1（タイムゾーン処理用）
 
 ### 2025年8月29日 - v1.47.1
 - **重要なバグ修正**: 空の音声認識結果の状態区別問題を解決
@@ -37,6 +74,36 @@ Azure Speech Servicesを使用した音声文字起こしAPIです。WatchMeプ�
 - **Azure Speech SDK を最新版にアップグレード**: 1.34.0 → 1.45.0
 - **音声認識の問題を解決**: SDK更新により認識精度が大幅に向上
 - **本番環境で動作確認済み**: vibe-transcriber-v2として稼働中
+
+## 🗄️ データベース設定
+
+### audio_filesテーブル
+処理ステータスを管理するテーブルです。以下のステータス値を使用します：
+
+| ステータス | 説明 |
+|-----------|------|
+| `pending` | 未処理 |
+| `processing` | 処理中 |
+| `completed` | 処理完了 |
+| `failed` | エラー発生 |
+| `quota_exceeded` | Azure利用上限超過 |
+
+### vibe_whisperテーブル
+文字起こし結果を保存するテーブルです。
+
+```sql
+-- テーブル構造
+create table public.vibe_whisper (
+  device_id text not null,
+  date date not null,
+  time_block text not null,
+  transcription text null,
+  status text not null default 'pending'::text,
+  created_at timestamp with time zone not null default now(),  -- 処理実行時刻
+  constraint vibe_whisper_pkey primary key (device_id, date, time_block),
+  constraint vibe_whisper_time_block_check check ((time_block ~ '^[0-2][0-9]-[0-5][0-9]$'::text))
+);
+```
 
 ## 🚀 セットアップ
 

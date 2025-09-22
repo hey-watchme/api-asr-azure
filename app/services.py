@@ -10,6 +10,7 @@ from botocore.exceptions import ClientError
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import logging
+from datetime import datetime
 
 # 環境変数読み込み
 load_dotenv()
@@ -456,6 +457,21 @@ class AzureSpeechService:
                         
                         transcription = transcription_result["transcription"].strip()
                         
+                        # Azure利用上限チェック（200応答だが結果が空で、発話検出フラグもない場合）
+                        is_quota_exceeded = False
+                        if not transcription and not transcription_result.get("no_speech_detected", False):
+                            # 現在時刻をチェック（UTC）
+                            import pytz
+                            from datetime import datetime as dt
+                            current_utc = dt.now(pytz.UTC)
+                            current_jst = current_utc.astimezone(pytz.timezone('Asia/Tokyo'))
+                            
+                            # 日本時間で0:00-9:00の間の場合、利用上限の可能性が高い
+                            if current_jst.hour < 9:
+                                is_quota_exceeded = True
+                                logger.warning(f"⚠️ Azure利用上限に達した可能性があります（JST: {current_jst.strftime('%H:%M')}）")
+                                logger.warning(f"   日本時間09:00以降に再実行してください")
+                        
                         # 発話なしの判定と明確な区別
                         final_transcription = transcription if transcription else "発話なし"
                         
@@ -464,22 +480,34 @@ class AzureSpeechService:
                             "device_id": device_id,
                             "date": local_date,  # リクエストから受け取った日付をそのまま使用
                             "time_block": time_block,
-                            "transcription": final_transcription
+                            "transcription": final_transcription,
+                            "created_at": datetime.utcnow().isoformat()  # 現在のUTC時刻をISO形式で保存
                         }
                         
                         # upsert（既存データは更新、新規データは挿入）
                         response = self.supabase.table('vibe_whisper').upsert(data).execute()
                         
-                        # Supabaseからの応答を詳細にログ出力
-                        logger.info(f"Supabase upsert response data: {response.data}")
-                        logger.info(f"Supabase upsert response count: {response.count}")
+                        # ★★★ 改善されたエラーハンドリングとロギング ★★★
                         
-                        # 応答にエラーが含まれていないか、データが空でないかを確認
+                        # 1. 常にレスポンスの主要な情報をログに出力し、成功・失敗両方のパターンを記録
+                        #    getattrを使い、存在しない属性でエラーが出ないようにする
+                        status_code = getattr(response, 'status_code', 'N/A')
+                        logger.info(f"Supabase upsert response: data={response.data}, count={response.count}, status_code={status_code}")
+                        
+                        # 2. 堅牢なエラーチェック
+                        #    - upsert成功時は通常、dataに挿入/更新されたレコード(配列)が返る。
+                        #    - 失敗時や何も起きなかった場合は data が空になることがある。
+                        #    - ここでは「dataに何も返ってこなかった」場合を失敗の疑いとして検知する。
                         if not response.data:
-                            logger.error("❌ Supabase returned an empty response or an error.")
-                            logger.error(f"   - Full response object: {response}")
-                            # エラーとして扱い、処理を中断
-                            raise Exception("Supabase upsert failed with empty response.")
+                            # 失敗と断定する前に追加情報をログに出力
+                            logger.warning("⚠️ Supabase upsert returned no data. This might indicate an error or an empty operation.")
+                            logger.warning(f"   - Request Payload: {data}")
+                            logger.warning(f"   - Full Response Object: {response}")
+                            
+                            # 50%の確率で失敗する問題のデバッグのため、これをクリティカルなエラーとして扱い、
+                            # audio_files のステータスが 'completed' になるのを防ぐ。
+                            # もし「データがなくても正常」なケースがある場合は、このロジックの再検討が必要。
+                            raise Exception("Supabase upsert returned no data, treating as failure to prevent data inconsistency.")
                         
                         # audio_filesテーブルのtranscriptions_statusをcompletedに更新
                         try:
@@ -520,10 +548,36 @@ class AzureSpeechService:
                 error_msg = f"{audio_file['file_path']}: S3エラー - {str(e)}"
                 logger.error(f"❌ {error_msg}")
                 error_files.append(audio_file)
+                
+                # エラー時にステータスを更新
+                try:
+                    self.supabase.table('audio_files') \
+                        .update({'transcriptions_status': 'failed'}) \
+                        .eq('file_path', audio_file['file_path']) \
+                        .execute()
+                    logger.info(f"ステータスを'failed'に更新: {audio_file['file_path']}")
+                except Exception as status_update_error:
+                    logger.error(f"ステータス更新エラー: {str(status_update_error)}")
             
             except Exception as e:
                 logger.error(f"❌ {audio_file['file_path']}: エラー - {str(e)}")
                 error_files.append(audio_file)
+                
+                # エラー時にステータスを更新
+                try:
+                    # Azure利用上限チェック（変数が定義されている場合）
+                    if 'is_quota_exceeded' in locals() and is_quota_exceeded:
+                        status = 'quota_exceeded'
+                    else:
+                        status = 'failed'
+                    
+                    self.supabase.table('audio_files') \
+                        .update({'transcriptions_status': status}) \
+                        .eq('file_path', audio_file['file_path']) \
+                        .execute()
+                    logger.info(f"ステータスを'{status}'に更新: {audio_file['file_path']}")
+                except Exception as status_update_error:
+                    logger.error(f"ステータス更新エラー: {str(status_update_error)}")
         
         # 処理結果を返す
         execution_time = time.time() - start_time

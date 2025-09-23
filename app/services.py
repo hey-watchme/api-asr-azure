@@ -523,30 +523,52 @@ class AzureSpeechService:
                             "created_at": datetime.utcnow().isoformat()  # 現在のUTC時刻をISO形式で保存
                         }
                         
-                        # upsert（既存データは更新、新規データは挿入）
-                        response = self.supabase.table('vibe_whisper').upsert(data).execute()
+                        # upsert（既存データは更新、新規データは挿入）- リトライ付き
+                        max_retries = 3
+                        retry_count = 0
+                        upsert_success = False
                         
-                        # ★★★ 改善されたエラーハンドリングとロギング ★★★
-                        
-                        # 1. 常にレスポンスの主要な情報をログに出力し、成功・失敗両方のパターンを記録
-                        #    getattrを使い、存在しない属性でエラーが出ないようにする
-                        status_code = getattr(response, 'status_code', 'N/A')
-                        logger.info(f"Supabase upsert response: data={response.data}, count={response.count}, status_code={status_code}")
-                        
-                        # 2. 堅牢なエラーチェック
-                        #    - upsert成功時は通常、dataに挿入/更新されたレコード(配列)が返る。
-                        #    - 失敗時や何も起きなかった場合は data が空になることがある。
-                        #    - ここでは「dataに何も返ってこなかった」場合を失敗の疑いとして検知する。
-                        if not response.data:
-                            # 失敗と断定する前に追加情報をログに出力
-                            logger.warning("⚠️ Supabase upsert returned no data. This might indicate an error or an empty operation.")
-                            logger.warning(f"   - Request Payload: {data}")
-                            logger.warning(f"   - Full Response Object: {response}")
-                            
-                            # 50%の確率で失敗する問題のデバッグのため、これをクリティカルなエラーとして扱い、
-                            # audio_files のステータスが 'completed' になるのを防ぐ。
-                            # もし「データがなくても正常」なケースがある場合は、このロジックの再検討が必要。
-                            raise Exception("Supabase upsert returned no data, treating as failure to prevent data inconsistency.")
+                        while retry_count < max_retries and not upsert_success:
+                            try:
+                                if retry_count > 0:
+                                    logger.info(f"Supabase upsert retry {retry_count}/{max_retries}")
+                                    time.sleep(1 * retry_count)  # 1秒, 2秒, 3秒の遅延
+                                
+                                response = self.supabase.table('vibe_whisper').upsert(data).execute()
+                                
+                                # レスポンスログ
+                                status_code = getattr(response, 'status_code', 'N/A')
+                                logger.info(f"Supabase upsert response: data={response.data}, count={response.count}, status_code={status_code}")
+                                
+                                # データが返ってこない場合のハンドリング
+                                if not response.data:
+                                    logger.warning(f"⚠️ Supabase upsert returned no data (attempt {retry_count + 1}/{max_retries})")
+                                    logger.warning(f"   - Request Payload: {data}")
+                                    
+                                    # データが空でも、既存レコードの更新の場合は成功とみなす
+                                    # vibe_whisperテーブルから既存レコードを確認
+                                    check_response = self.supabase.table('vibe_whisper') \
+                                        .select('*') \
+                                        .eq('device_id', device_id) \
+                                        .eq('date', local_date) \
+                                        .eq('time_block', time_block) \
+                                        .execute()
+                                    
+                                    if check_response.data:
+                                        logger.info("✅ Existing record found - treating as successful update")
+                                        upsert_success = True
+                                    else:
+                                        retry_count += 1
+                                        if retry_count >= max_retries:
+                                            raise Exception(f"Supabase upsert failed after {max_retries} attempts")
+                                else:
+                                    upsert_success = True
+                                    
+                            except Exception as e:
+                                logger.error(f"Supabase upsert error (attempt {retry_count + 1}): {str(e)}")
+                                retry_count += 1
+                                if retry_count >= max_retries:
+                                    raise
                         
                         # audio_filesテーブルのtranscriptions_statusをcompletedに更新
                         try:

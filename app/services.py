@@ -316,11 +316,12 @@ class AzureSpeechService:
             logger.info(f"新インターフェース使用: device_id={request.device_id}, local_date={request.local_date}, time_blocks={request.time_blocks}")
             
             # audio_filesテーブルから該当するファイルを検索
+            # すべてのファイルを取得（ステータスに関係なく処理可能にする）
+            # 明示的に処理を指定した場合は、completedも含めて再処理できるようにする
             query = self.supabase.table('audio_files') \
                 .select('file_path, device_id, recorded_at, local_date, time_block, transcriptions_status') \
                 .eq('device_id', request.device_id) \
-                .eq('local_date', request.local_date) \
-                .eq('transcriptions_status', 'pending')
+                .eq('local_date', request.local_date)
             
             # time_blocksが指定されている場合はフィルタを追加
             if request.time_blocks:

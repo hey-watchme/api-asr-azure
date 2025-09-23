@@ -1,6 +1,6 @@
-# Azure Speech Services API v1 (vibe-transcriber-v2)
+# Azure ASR (Automatic Speech Recognition) API v1 (vibe-transcriber-v2)
 
-Azure Speech Servicesを使用した音声文字起こしAPIです。WatchMeプラットフォームの一部として動作します。
+Azure Speech Servicesを使用したASR（自動音声認識）APIです。WatchMeプラットフォームの一部として動作します。
 
 > **注意**: 本番環境では`vibe-transcriber-v2`という名前でECRからDockerイメージとしてデプロイされています。
 
@@ -10,7 +10,7 @@ Azure Speech Servicesを使用した音声文字起こしAPIです。WatchMeプ�
 **Azure Speech Serviceの無料枠または日次利用制限は、UTC 00:00（日本時間 09:00）にリセットされます。**
 
 #### 重要な注意点：
-- **制限到達時の挙動**: APIは200を返すが、実際の文字起こし結果が空になる可能性がある
+- **制限到達時の挙動**: APIは200を返すが、実際のASR結果が空になる可能性がある
 - **リセット時刻**: 
   - UTC 00:00 = 日本時間（JST）09:00
   - 毎日朝9時に新しいクォータが利用可能になる
@@ -35,7 +35,7 @@ Azure Speech Servicesを使用した音声文字起こしAPIです。WatchMeプ�
 - **コンテナ名**: `vibe-transcriber-v2`
 - **ポート**: 8013
 - **公開URL**: `https://api.hey-watch.me/vibe-transcriber-v2/`
-- **デプロイ方式**: ECRからDockerイメージをプル
+- **デプロイ方式**: GitHub Actions CI/CDパイプラインによる自動デプロイ
 
 ## 🔧 処理制限モード（コスト最適化機能）
 
@@ -90,7 +90,7 @@ RESTRICTED_DEVICES = {
 | `quota_exceeded` | Azure利用上限超過 |
 
 ### vibe_whisperテーブル
-文字起こし結果を保存するテーブルです。
+ASR結果を保存するテーブルです。
 
 ```sql
 -- テーブル構造
@@ -332,7 +332,7 @@ docker logs vibe-transcriber-v2 --tail 50 | grep "認識"
 
 ### POST /analyze/azure
 
-音声ファイルを直接アップロードして文字起こし（ローカルAPI用）
+音声ファイルを直接アップロードしてASR処理（ローカルAPI用）
 
 **リクエスト:**
 - `file`: 音声ファイル (.wav, .mp3, .m4a)
@@ -340,7 +340,7 @@ docker logs vibe-transcriber-v2 --tail 50 | grep "認識"
 
 ### POST /fetch-and-transcribe
 
-WatchMeシステム統合エンドポイント - Supabaseからファイル情報を取得してS3から音声ファイルをダウンロード後、文字起こし実行
+WatchMeシステム統合エンドポイント - Supabaseからファイル情報を取得してS3から音声ファイルをダウンロード後、ASR実行
 
 #### 新しいインターフェース（v1.46.0〜推奨）
 
@@ -387,7 +387,7 @@ WatchMeシステム統合エンドポイント - Supabaseからファイル情�
 
 - **Python**: 3.11以上
 - **フレームワーク**: FastAPI
-- **音声認識**: Azure Speech Services SDK 1.45.0
+- **ASR**: Azure Speech Services SDK 1.45.0
 - **統合システム**: WatchMe Platform (v1.46.0〜)
   - **データベース**: Supabase (Python SDK 2.10.0)
   - **ファイルストレージ**: AWS S3 (boto3 1.35.57)
@@ -447,7 +447,7 @@ python test_transcribe.py
 |------------------|------|---------------------|---------------|
 | **未処理** | まだ音声処理を行っていない | `pending` | （なし） |
 | **処理済み・発話なし** | 処理したが音声に発話内容なし | `completed` | `発話なし` |
-| **処理済み・発話あり** | 処理して正常な文字起こし取得 | `completed` | `実際の内容` |
+| **処理済み・発話あり** | 処理して正常なASR結果取得 | `completed` | `実際の内容` |
 
 **重要な実装ポイント:**
 - 空の認識結果は **空文字列ではなく「発話なし」** としてデータベースに保存

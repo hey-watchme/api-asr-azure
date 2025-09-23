@@ -1,0 +1,149 @@
+# Azure Speech Services API (vibe-transcriber-v2) - ECR & EC2 自動デプロイワークフロー
+name: Deploy to Amazon ECR and EC2
+
+# このワークフローが実行されるタイミング
+on:
+  # mainブランチにpushされた時に実行
+  push:
+    branches: [ "main" ]
+  # 手動実行も可能にする
+  workflow_dispatch:
+
+# 環境変数
+env:
+  AWS_REGION: ap-southeast-2
+  ECR_REPOSITORY: watchme-api-transcriber-v2
+
+# ジョブの定義
+jobs:
+  deploy:
+    name: Build and Push to ECR
+    runs-on: ubuntu-latest
+    
+    steps:
+    # ステップ1: コードのチェックアウト
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # ステップ2: AWS認証情報の設定
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    # ステップ3: ECRへのログイン
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    # ステップ4: Docker Buildxのセットアップ（マルチプラットフォーム対応）
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    # ステップ5: Dockerイメージのビルド、タグ付け、プッシュ（ARM64対応）
+    - name: Build, tag, and push image to Amazon ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        # ARM64アーキテクチャ用にDockerイメージをビルド
+        docker buildx build \
+          --platform linux/arm64 \
+          --push \
+          -f Dockerfile.prod \
+          -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG \
+          -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest \
+          .
+        
+        echo "✅ Image pushed to ECR:"
+        echo "  - $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG"
+        echo "  - $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest"
+
+    # ステップ5: デプロイ成功通知
+    - name: Deploy Success Notification
+      if: success()
+      run: |
+        echo "🎉 Deployment to ECR succeeded!"
+        echo "📦 Repository: ${{ env.ECR_REPOSITORY }}"
+        echo "🏷️ Image Tag: ${{ github.sha }}"
+        echo "📍 Region: ${{ env.AWS_REGION }}"
+        echo ""
+        echo "📋 Next Steps:"
+        echo "1. SSH to EC2: ssh -i ~/watchme-key.pem ubuntu@3.24.16.82"
+        echo "2. Deploy: cd /home/ubuntu/vibe-transcriber-v2 && ./run-prod.sh"
+
+    # ステップ6: エラー時の通知
+    - name: Deploy Failure Notification
+      if: failure()
+      run: |
+        echo "❌ Deployment to ECR failed!"
+        echo "Please check the logs above for details."
+
+  # ジョブ2: CD - EC2への自動デプロイ
+  deploy-to-ec2:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    # 重要: deploy ジョブが成功した後にのみ実行
+    needs: deploy
+    
+    steps:
+    # ステップ1: SSHエージェントのセットアップ
+    - name: Setup SSH Agent
+      uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+    
+    # ステップ2: Known Hostsの追加（セキュリティ向上）
+    - name: Add EC2 to known hosts
+      run: |
+        mkdir -p ~/.ssh
+        ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+    
+    # ステップ3: EC2にデプロイ
+    - name: Deploy to EC2 instance
+      env:
+        EC2_HOST: ${{ secrets.EC2_HOST }}
+        EC2_USER: ${{ secrets.EC2_USER }}
+      run: |
+        echo "🚀 Starting deployment to EC2..."
+        
+        # SSHでEC2に接続してデプロイコマンドを実行
+        ssh ${EC2_USER}@${EC2_HOST} << 'ENDSSH'
+          set -e
+          echo "📦 Navigating to application directory..."
+          cd /home/ubuntu/vibe-transcriber-v2
+          
+          echo "🔄 Running deployment script..."
+          ./run-prod.sh
+          
+          echo "✅ Deployment script completed"
+          
+          # コンテナの状態確認
+          echo "📊 Checking container status..."
+          docker ps | grep vibe-transcriber-v2 || echo "⚠️ Container not found"
+          
+          # ヘルスチェック
+          echo "🏥 Running health check..."
+          sleep 5
+          curl -f http://localhost:8013/ || echo "⚠️ Health check failed"
+        ENDSSH
+        
+        echo "✅ EC2 deployment completed successfully!"
+    
+    # ステップ4: デプロイ成功通知
+    - name: Deployment Success Notification
+      if: success()
+      run: |
+        echo "🎉 Full CI/CD pipeline completed successfully!"
+        echo "📦 Service: vibe-transcriber-v2"
+        echo "🌐 URL: https://api.hey-watch.me/vibe-transcriber-v2/"
+        echo "🏷️ Version: ${{ github.sha }}"
+    
+    # ステップ5: デプロイ失敗通知
+    - name: Deployment Failure Notification
+      if: failure()
+      run: |
+        echo "❌ EC2 deployment failed!"
+        echo "Please check the SSH connection and server logs."

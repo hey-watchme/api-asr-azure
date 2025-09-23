@@ -438,6 +438,44 @@ class AzureSpeechService:
                 local_date = audio_file['local_date']
                 device_id = audio_file['device_id']
                 
+                # ===== 処理制限モード（コスト削減のための運用制限） =====
+                # 特定デバイスの夜間処理をスキップ
+                # 今後の運用で必要に応じて環境変数化やDB管理への移行を検討
+                
+                # 制限対象デバイス設定（現在はハードコード、将来的には環境変数やDB管理へ）
+                RESTRICTED_DEVICES = {
+                    '9f7d6e27-98c3-4c19-bdfb-f7fda58b9a93': {
+                        'skip_hours': list(range(23, 24)) + list(range(0, 6)),  # 23:00-05:59をスキップ
+                        'reason': 'テストデバイス - 夜間処理制限'
+                    }
+                    # 今後、必要に応じて他のデバイスも追加可能
+                    # 'device-id-2': {'skip_hours': [0,1,2,3,4,5], 'reason': '別の理由'}
+                }
+                
+                # デバイスが制限対象かチェック
+                if device_id in RESTRICTED_DEVICES:
+                    hour = int(time_block.split('-')[0])
+                    device_config = RESTRICTED_DEVICES[device_id]
+                    
+                    if hour in device_config['skip_hours']:
+                        # 処理をスキップ
+                        logger.info(f"⏭️ 処理制限モード: {device_id} - {time_block} - 理由: {device_config['reason']}")
+                        
+                        # ステータスを'skipped'に更新（将来的に専用ステータスの追加も検討）
+                        try:
+                            self.supabase.table('audio_files') \
+                                .update({'transcriptions_status': 'skipped'}) \
+                                .eq('file_path', file_path) \
+                                .execute()
+                            logger.info(f"ステータスを'skipped'に更新: {file_path}")
+                        except Exception as status_update_error:
+                            logger.error(f"ステータス更新エラー: {str(status_update_error)}")
+                        
+                        # 次のファイルへ
+                        continue
+                
+                # ===== 処理制限モードここまで =====
+                
                 # 一時ファイルに音声データをダウンロード
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
                     tmp_file_path = tmp_file.name
@@ -560,14 +598,16 @@ class AzureSpeechService:
                     logger.error(f"ステータス更新エラー: {str(status_update_error)}")
             
             except Exception as e:
-                logger.error(f"❌ {audio_file['file_path']}: エラー - {str(e)}")
+                error_message = str(e)
+                logger.error(f"❌ {audio_file['file_path']}: エラー - {error_message}")
                 error_files.append(audio_file)
                 
                 # エラー時にステータスを更新
                 try:
-                    # Azure利用上限チェック（変数が定義されている場合）
-                    if 'is_quota_exceeded' in locals() and is_quota_exceeded:
+                    # Quota exceededエラーの判定（エラーメッセージから検出）
+                    if "quota exceeded" in error_message.lower():
                         status = 'quota_exceeded'
+                        logger.warning(f"⚠️ Azure利用上限エラーを検出しました")
                     else:
                         status = 'failed'
                     

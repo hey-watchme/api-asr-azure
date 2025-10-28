@@ -1,4 +1,4 @@
-# Azure Speech Services API (vibe-transcriber-v2) - ECR & EC2 自動デプロイワークフロー
+# Vibe Analysis Transcriber API - ECR & EC2 自動デプロイワークフロー
 name: Deploy to Amazon ECR and EC2
 
 # このワークフローが実行されるタイミング
@@ -12,7 +12,7 @@ on:
 # 環境変数
 env:
   AWS_REGION: ap-southeast-2
-  ECR_REPOSITORY: watchme-vibe-analysis-transcriber-v2
+  ECR_REPOSITORY: watchme-vibe-analysis-transcriber
 
 # ジョブの定義
 jobs:
@@ -72,7 +72,7 @@ jobs:
         echo ""
         echo "📋 Next Steps:"
         echo "1. SSH to EC2: ssh -i ~/watchme-key.pem ubuntu@3.24.16.82"
-        echo "2. Deploy: cd /home/ubuntu/vibe-transcriber-v2 && ./run-prod.sh"
+        echo "2. Deploy: cd /home/ubuntu/vibe-analysis-transcriber && ./run-prod.sh"
 
     # ステップ6: エラー時の通知
     - name: Deploy Failure Notification
@@ -113,17 +113,17 @@ jobs:
         ssh ${EC2_USER}@${EC2_HOST} << 'ENDSSH'
           set -e
           echo "📦 Navigating to application directory..."
-          cd /home/ubuntu/vibe-transcriber-v2
-          
+          cd /home/ubuntu/vibe-analysis-transcriber
+
           echo "🔄 Running deployment script..."
           ./run-prod.sh
-          
+
           echo "✅ Deployment script completed"
-          
+
           # コンテナの状態確認
           echo "📊 Checking container status..."
-          docker ps | grep vibe-transcriber-v2 || echo "⚠️ Container not found"
-          
+          docker ps | grep vibe-analysis-transcriber || echo "⚠️ Container not found"
+
           # ヘルスチェック
           echo "🏥 Running health check..."
           sleep 5
@@ -137,8 +137,8 @@ jobs:
       if: success()
       run: |
         echo "🎉 Full CI/CD pipeline completed successfully!"
-        echo "📦 Service: vibe-transcriber-v2"
-        echo "🌐 URL: https://api.hey-watch.me/vibe-transcriber-v2/"
+        echo "📦 Service: vibe-analysis-transcriber"
+        echo "🌐 URL: https://api.hey-watch.me/vibe-analysis/transcription/"
         echo "🏷️ Version: ${{ github.sha }}"
     
     # ステップ5: デプロイ失敗通知

@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  vibe-transcriber-v2:
-    image: 754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-api-transcriber-v2:latest
-    container_name: vibe-transcriber-v2
+  vibe-analysis-transcriber:
+    image: 754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-vibe-analysis-transcriber:latest
+    container_name: vibe-analysis-transcriber
     ports:
       - "127.0.0.1:8013:8013"  # localhostのみにバインド（Nginx経由でアクセス）
     environment:

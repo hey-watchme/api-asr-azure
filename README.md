@@ -1,8 +1,8 @@
-# Azure ASR (Automatic Speech Recognition) API v1 (vibe-transcriber-v2)
+# Azure ASR (Automatic Speech Recognition) API - Vibe Analysis Transcriber
 
 Azure Speech Servicesを使用したASR（自動音声認識）APIです。WatchMeプラットフォームの一部として動作します。
 
-> **注意**: 本番環境では`vibe-transcriber-v2`という名前でECRからDockerイメージとしてデプロイされています。
+> **注意**: 本番環境では`vibe-analysis-transcriber`という名前でECRからDockerイメージとしてデプロイされています。
 
 ## ⚠️ Azure Speech Service 利用制限について
 
@@ -31,10 +31,10 @@ Azure Speech Servicesを使用したASR（自動音声認識）APIです。Watch
 
 ## 🐳 本番環境情報
 
-- **ECRリポジトリ**: `754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-api-transcriber-v2`
-- **コンテナ名**: `vibe-transcriber-v2`
+- **ECRリポジトリ**: `754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-vibe-analysis-transcriber`
+- **コンテナ名**: `vibe-analysis-transcriber`
 - **ポート**: 8013
-- **公開URL**: `https://api.hey-watch.me/vibe-transcriber-v2/`
+- **公開URL**: `https://api.hey-watch.me/vibe-analysis-transcriber/`
 - **デプロイ方式**: GitHub Actions CI/CDパイプラインによる自動デプロイ
 
 ## 🔧 処理制限モード（コスト最適化機能）
@@ -183,9 +183,9 @@ uvicorn main:app --host 0.0.0.0 --port 8008 --reload
 
 ### 現在の本番環境構成
 
-- **コンテナ名**: vibe-transcriber-v2
+- **コンテナ名**: vibe-analysis-transcriber
 - **ポート**: 8013
-- **エンドポイント**: https://api.hey-watch.me/vibe-transcriber-v2/
+- **エンドポイント**: https://api.hey-watch.me/vibe-analysis-transcriber/
 - **EC2サーバー**: 3.24.16.82
 
 ## 🚢 本番環境デプロイ
@@ -198,28 +198,23 @@ uvicorn main:app --host 0.0.0.0 --port 8008 --reload
    ```
 
 2. **環境変数ファイル（.env）が配置済み**
-   - `/home/ubuntu/vibe-transcriber-v2/.env`
+   - `/home/ubuntu/vibe-analysis-transcriber/.env`
 
 ### デプロイ手順
 
-#### 方法1: run-prod.shを使用（推奨）
+#### 方法1: GitHub Actions自動デプロイ（推奨）
 ```bash
-# EC2サーバー上で実行
-cd /home/ubuntu/vibe-transcriber-v2
-./run-prod.sh
+# ローカルでコードをpush
+git push origin main
+
+# GitHub Actionsが自動的にEC2にデプロイ
 ```
 
-#### 方法2: 手動でdocker-composeを使用
+#### 方法2: 手動でrun-prod.shを使用
 ```bash
-# ECRから最新イメージをプル
-aws ecr get-login-password --region ap-southeast-2 | \
-  docker login --username AWS --password-stdin \
-  754724220380.dkr.ecr.ap-southeast-2.amazonaws.com
-
-docker pull 754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-api-transcriber-v2:latest
-
-# コンテナを起動
-docker-compose -f docker-compose.prod.yml up -d
+# EC2サーバー上で実行
+cd /home/ubuntu/vibe-analysis-transcriber
+./run-prod.sh
 ```
 
 ### 動作確認
@@ -228,54 +223,28 @@ docker-compose -f docker-compose.prod.yml up -d
 curl http://localhost:8013/
 
 # コンテナ状態確認
-docker ps | grep vibe-transcriber
+docker ps | grep vibe-analysis-transcriber
 
 # ログ確認
-docker logs -f vibe-transcriber-v2
+docker logs -f vibe-analysis-transcriber
 ```
 
-### 旧デプロイ手順（参考）
+### 緊急時の手動デプロイ手順
 
-#### 1. SDKアップグレード（緊急修正の場合）
+#### SDKアップグレード（緊急修正の場合）
 
 ```bash
 # EC2サーバーにSSH接続
 ssh -i ~/watchme-key.pem ubuntu@3.24.16.82
 
 # コンテナ内でSDKをアップグレード
-docker exec vibe-transcriber-v2 pip install --upgrade azure-cognitiveservices-speech==1.45.0
+docker exec vibe-analysis-transcriber pip install --upgrade azure-cognitiveservices-speech==1.45.0
 
 # コンテナを再起動
-docker restart vibe-transcriber-v2
+docker restart vibe-analysis-transcriber
 
 # ログを確認
-docker logs -f vibe-transcriber-v2
-```
-
-#### 2. 完全なデプロイ（コード変更を含む場合）
-
-```bash
-# 1. Dockerイメージをビルド
-docker build -t vibe-transcriber-v2 .
-
-# 2. ECRにプッシュ（AWSの認証情報が必要）
-aws ecr get-login-password --region ap-southeast-2 | docker login --username AWS --password-stdin 754724220380.dkr.ecr.ap-southeast-2.amazonaws.com
-docker tag vibe-transcriber-v2:latest 754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-api-transcriber-v2:latest
-docker push 754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-api-transcriber-v2:latest
-
-# 3. EC2サーバーで新しいイメージをプル
-ssh -i ~/watchme-key.pem ubuntu@3.24.16.82
-docker pull 754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-api-transcriber-v2:latest
-
-# 4. コンテナを更新
-docker stop vibe-transcriber-v2
-docker rm vibe-transcriber-v2
-docker run -d \
-  --name vibe-transcriber-v2 \
-  --network watchme-network \
-  -p 8013:8013 \
-  --env-file /home/ubuntu/vibe-transcriber-v2/.env \
-  754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-api-transcriber-v2:latest
+docker logs -f vibe-analysis-transcriber
 ```
 
 ### 動作確認
@@ -284,7 +253,7 @@ docker run -d \
 
 ```bash
 # ローカルから
-curl https://api.hey-watch.me/vibe-transcriber-v2/
+curl https://api.hey-watch.me/vibe-analysis-transcriber/
 
 # 期待される応答
 {
@@ -298,7 +267,7 @@ curl https://api.hey-watch.me/vibe-transcriber-v2/
 
 **新しいインターフェース（推奨）:**
 ```bash
-curl -X POST "https://api.hey-watch.me/vibe-transcriber-v2/fetch-and-transcribe" \
+curl -X POST "https://api.hey-watch.me/vibe-analysis-transcriber/fetch-and-transcribe" \
   -H "Content-Type: application/json" \
   -d '{
     "device_id": "d067d407-cf73-4174-a9c1-d91fb60d64d0",
@@ -310,7 +279,7 @@ curl -X POST "https://api.hey-watch.me/vibe-transcriber-v2/fetch-and-transcribe"
 
 **既存インターフェース（後方互換性）:**
 ```bash
-curl -X POST "https://api.hey-watch.me/vibe-transcriber-v2/fetch-and-transcribe" \
+curl -X POST "https://api.hey-watch.me/vibe-analysis-transcriber/fetch-and-transcribe" \
   -H "Content-Type: application/json" \
   -d '{
     "file_paths": [
@@ -325,7 +294,7 @@ curl -X POST "https://api.hey-watch.me/vibe-transcriber-v2/fetch-and-transcribe"
 ```bash
 # EC2サーバーで
 ssh -i ~/watchme-key.pem ubuntu@3.24.16.82
-docker logs vibe-transcriber-v2 --tail 50 | grep "認識"
+docker logs vibe-analysis-transcriber --tail 50 | grep "認識"
 ```
 
 ## 📡 API エンドポイント
@@ -472,7 +441,7 @@ python test_transcribe.py
 ### 🐛 デバッグ時の注意点
 
 **問題発生時の調査手順:**
-1. **ログで処理フローを確認** - `docker logs vibe-transcriber-v2 --tail 100`
+1. **ログで処理フローを確認** - `docker logs vibe-analysis-transcriber --tail 100`
 2. **APIレスポンスを確認** - 成功ステータスとデータベース保存の両方をチェック
 3. **データベースの実際の状態を確認** - transcriptions_statusとtranscriptionの内容
 4. **watchme-network接続状態を確認** - `bash /home/ubuntu/watchme-server-configs/scripts/check-infrastructure.sh`
@@ -493,4 +462,4 @@ python test_transcribe.py
 
 - [Azure Speech Service ドキュメント](https://docs.microsoft.com/ja-jp/azure/cognitive-services/speech-service/)
 - [WatchMe Server Configs](https://github.com/matsumotokaya/watchme-server-configs)
-- 本番環境URL: https://api.hey-watch.me/vibe-transcriber-v2/
+- 本番環境URL: https://api.hey-watch.me/vibe-analysis-transcriber/

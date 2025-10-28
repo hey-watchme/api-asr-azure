@@ -138,7 +138,7 @@ jobs:
       run: |
         echo "🎉 Full CI/CD pipeline completed successfully!"
         echo "📦 Service: vibe-analysis-transcriber"
-        echo "🌐 URL: https://api.hey-watch.me/vibe-analysis/transcription/"
+        echo "🌐 URL: https://api.hey-watch.me/vibe-analysis-transcriber/"
         echo "🏷️ Version: ${{ github.sha }}"
     
     # ステップ5: デプロイ失敗通知

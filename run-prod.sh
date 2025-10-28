@@ -2,15 +2,15 @@
 set -e
 
 # =============================================================================
-# Vibe Transcriber V2 (Azure Speech API) 本番環境起動スクリプト
+# Vibe Analysis Transcriber (Azure Speech API) 本番環境起動スクリプト
 # =============================================================================
 # ECRから最新イメージをプルして起動
 # =============================================================================
 
-ECR_REPOSITORY="754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-api-transcriber-v2"
+ECR_REPOSITORY="754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-vibe-analysis-transcriber"
 AWS_REGION="ap-southeast-2"
 
-echo "=== vibe-transcriber-v2 本番環境起動 ==="
+echo "=== vibe-analysis-transcriber 本番環境起動 ==="
 echo "リポジトリ: $ECR_REPOSITORY"
 
 # watchme-networkの確認（インフラストラクチャ管理体制）
@@ -64,12 +64,12 @@ done
 # コンテナの状態を表示
 echo ""
 echo "📊 コンテナ状態:"
-docker ps | grep -E "CONTAINER|vibe-transcriber" || echo "コンテナが見つかりません"
+docker ps | grep -E "CONTAINER|vibe-analysis-transcriber" || echo "コンテナが見つかりません"
 
 echo ""
 echo "=== 起動完了 ==="
 echo "内部エンドポイント: http://localhost:8013"
-echo "公開URL: https://api.hey-watch.me/vibe-transcriber-v2/"
+echo "公開URL: https://api.hey-watch.me/vibe-analysis-transcriber/"
 echo ""
 echo "ログ確認:"
-echo "  docker logs -f vibe-transcriber-v2"
+echo "  docker logs -f vibe-analysis-transcriber"

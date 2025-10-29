@@ -4,6 +4,69 @@ Azure Speech Servicesを使用したASR（自動音声認識）APIです。Watch
 
 > **注意**: 本番環境では`vibe-analysis-transcriber`という名前でECRからDockerイメージとしてデプロイされています。
 
+---
+
+## 🗺️ ルーティング詳細
+
+| 項目 | 値 | 説明 |
+|------|-----|------|
+| **🏷️ サービス名** | Vibe Transcriber API | Azure Speech Services音声文字起こし |
+| **📦 機能** | ASR (音声認識) | Azure Speech Servicesによる文字起こし |
+| | | |
+| **🌐 外部アクセス（Nginx）** | | |
+| └ 公開エンドポイント | `https://api.hey-watch.me/vibe-analysis/transcriber/` | ✅ 統一命名規則に準拠（2025-10-28） |
+| └ Nginx設定ファイル | `/etc/nginx/sites-available/api.hey-watch.me` | |
+| └ proxy_pass先 | `http://localhost:8013/` | 内部転送先 |
+| └ タイムアウト | 180秒 | read/connect/send |
+| | | |
+| **🔌 API内部エンドポイント** | | |
+| └ ヘルスチェック | `/health` | GET |
+| └ **S3統合（重要）** | `/fetch-and-transcribe` | POST - Lambdaから呼ばれる |
+| └ ルート情報 | `/` | GET - API情報表示 |
+| | | |
+| **🐳 Docker/コンテナ** | | |
+| └ コンテナ名 | `vibe-analysis-transcriber` | `docker ps`で表示される名前 |
+| └ ポート（内部） | 8013 | コンテナ内 |
+| └ ポート（公開） | `127.0.0.1:8013:8013` | ローカルホストのみ |
+| └ ヘルスチェック | `/health` | Docker healthcheck |
+| | | |
+| **☁️ AWS ECR** | | |
+| └ リポジトリ名 | `watchme-vibe-analysis-transcriber` | ✅ 統一済み |
+| └ リージョン | ap-southeast-2 (Sydney) | |
+| └ URI | `754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-vibe-analysis-transcriber:latest` | |
+| | | |
+| **⚙️ systemd** | | |
+| └ サービス名 | `vibe-analysis-transcriber.service` | ✅ 統一済み |
+| └ 起動コマンド | `docker-compose up -d` | |
+| └ 自動起動 | enabled | サーバー再起動時に自動起動 |
+| | | |
+| **📂 ディレクトリ** | | |
+| └ ソースコード | `/Users/kaya.matsumoto/projects/watchme/api/vibe-analysis/transcriber-v2` | ローカル |
+| └ GitHubリポジトリ | `hey-watchme/api-vibe-analysis-transcriber-v2` | |
+| └ EC2配置場所 | Docker内部のみ（ディレクトリなし） | ECR経由デプロイ |
+| | | |
+| **🔗 呼び出し元** | | |
+| └ Lambda関数 | `watchme-audio-worker` | 30分ごと |
+| └ 呼び出しURL | ✅ `https://api.hey-watch.me/vibe-analysis/transcriber/fetch-and-transcribe` | **統一命名規則に準拠（2025-10-28修正）** |
+| └ 環境変数 | `API_BASE_URL=https://api.hey-watch.me` | Lambda内 |
+
+### ✅ 統一命名規則への対応完了（2025-10-28）
+
+**API命名統一タスクに基づき、以下を修正**:
+
+1. **Nginxエンドポイント**: `/vibe-analysis/transcription/` → `/vibe-analysis/transcriber/`
+2. **Lambda関数**: URL修正完了（watchme-audio-worker）
+3. **統一原則**: `/{domain}/{service}/` に準拠
+   - domain: `vibe-analysis`
+   - service: `transcriber`
+
+**修正完了ファイル**:
+- ✅ `/watchme/server-configs/sites-available/api.hey-watch.me`
+- ✅ `/watchme/server-configs/lambda-functions/watchme-audio-worker/lambda_function.py`
+- ✅ `/watchme/api/vibe-analysis/transcriber-v2/README.md`（このファイル）
+
+---
+
 ## ⚠️ Azure Speech Service 利用制限について
 
 ### 日次クォータのリセット時間

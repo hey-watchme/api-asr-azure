@@ -38,8 +38,25 @@ aws ecr get-login-password --region $AWS_REGION | \
 
 docker pull $ECR_REPOSITORY:latest
 
-# 既存のコンテナを停止・削除
-echo "🛑 既存のコンテナを停止中..."
+# 既存のコンテナを停止・削除（3層アプローチ）
+echo "🛑 既存のコンテナを停止・削除中..."
+
+# 1. 実行中コンテナの検索と停止
+RUNNING_CONTAINERS=$(docker ps -q --filter "name=vibe-analysis-transcriber")
+if [ ! -z "$RUNNING_CONTAINERS" ]; then
+    echo "  - 実行中のコンテナを停止: $RUNNING_CONTAINERS"
+    docker stop $RUNNING_CONTAINERS
+fi
+
+# 2. 全コンテナの削除（停止済み含む）
+ALL_CONTAINERS=$(docker ps -aq --filter "name=vibe-analysis-transcriber")
+if [ ! -z "$ALL_CONTAINERS" ]; then
+    echo "  - コンテナを削除: $ALL_CONTAINERS"
+    docker rm -f $ALL_CONTAINERS
+fi
+
+# 3. docker-compose管理コンテナの削除
+echo "  - docker-compose down実行"
 docker-compose -f docker-compose.prod.yml down || true
 
 # コンテナを起動

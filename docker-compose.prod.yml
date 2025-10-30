@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   vibe-analysis-transcriber:
     image: 754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-vibe-analysis-transcriber:latest

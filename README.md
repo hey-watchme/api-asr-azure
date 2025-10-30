@@ -1,8 +1,111 @@
-# Azure ASR (Automatic Speech Recognition) API - Vibe Analysis Transcriber
+# Vibe Analysis Transcriber API
 
-Azure Speech Servicesを使用したASR（自動音声認識）APIです。WatchMeプラットフォームの一部として動作します。
+マルチプロバイダー対応のASR（自動音声認識）APIです。WatchMeプラットフォームの一部として動作します。
 
-> **注意**: 本番環境では`vibe-analysis-transcriber`という名前でECRからDockerイメージとしてデプロイされています。
+## 🤖 ASRプロバイダー設定
+
+### 設計コンセプト
+
+このAPIは**複数のASRプロバイダーに対応**し、簡単に切り替えられる設計になっています。
+
+**目的**:
+- 新しいモデルへの迅速な移行
+- コスト最適化（プロバイダーごとに価格が異なる）
+- パフォーマンス不良時の即座の切り戻し
+- 複数のプロバイダーを事前準備（APIキー設定済み、いつでも切り替え可能）
+
+**特徴**:
+- ✅ クライアント側（アプリ・他のAPI）の変更は不要
+- ✅ コード1行変更 → git push で切り替え完了
+- ✅ 2-3種類のプロバイダーを待機状態で保持可能
+- ✅ モデルバージョンアップも同じ手順
+
+### 現在使用中
+
+- プロバイダー: **Groq**
+- モデル: **whisper-large-v3-turbo**
+
+### 対応プロバイダー
+
+| プロバイダー | 対応モデル例 | 環境変数 | 状態 |
+|------------|------------|---------|------|
+| **Azure** | ja-JP (日本語), en-US (英語) | AZURE_SPEECH_KEY, AZURE_SERVICE_REGION | ✅ 設定済み |
+| **Groq** | whisper-large-v3-turbo, whisper-large-v3 | GROQ_API_KEY | ✅ 設定済み（現在使用中） |
+
+### プロバイダー切り替え方法
+
+#### Azure → Groq に切り替える場合
+
+**ステップ1: Groq APIキーの準備**
+
+1. Groq APIキーを取得: https://console.groq.com/
+2. 環境変数に追加（ローカル・本番環境の `.env` ファイル）:
+   ```bash
+   GROQ_API_KEY=gsk-your-api-key
+   ```
+
+**ステップ2: プロバイダーを切り替え**
+
+```bash
+# app/asr_providers.py を編集
+vi app/asr_providers.py
+```
+
+変更内容：
+```python
+# 変更前
+CURRENT_PROVIDER = "azure"
+CURRENT_MODEL = "ja-JP"
+
+# 変更後
+CURRENT_PROVIDER = "groq"
+CURRENT_MODEL = "whisper-large-v3-turbo"
+```
+
+**ステップ3: デプロイ**
+
+```bash
+git add app/asr_providers.py
+git commit -m "feat: Switch to Groq whisper-large-v3-turbo"
+git push origin main
+
+# CI/CDが自動実行（約5分）
+```
+
+**ステップ4: 動作確認**
+
+```bash
+# ヘルスチェックでモデルを確認
+curl https://api.hey-watch.me/vibe-analysis/transcriber/health | jq
+
+# レスポンス例
+# {
+#   "status": "healthy",
+#   "service": "WatchMe Transcriber API",
+#   "asr_provider": "groq",  ← 変わっている
+#   "asr_model": "whisper-large-v3-turbo"
+# }
+```
+
+#### Groq → Azure に切り戻す場合
+
+```python
+# app/asr_providers.py
+CURRENT_PROVIDER = "azure"  # 1行変更
+CURRENT_MODEL = "ja-JP"
+```
+
+git push するだけで即座に戻ります。
+
+---
+
+## 🎯 運用方法
+
+> **重要**: このAPIは**Dockerコンテナ**で運用されています
+> - **本番環境**: EC2上でDockerコンテナとして稼働
+> - **コンテナ名**: `vibe-analysis-transcriber`
+> - **ECRリポジトリ**: `watchme-vibe-analysis-transcriber`
+> - **ローカル開発**: venv環境はオプション（テスト用）
 
 ---
 
@@ -169,33 +272,23 @@ create table public.vibe_whisper (
 );
 ```
 
-## 🚀 セットアップ
+## 🐳 本番環境での運用（推奨）
 
-### 1. 仮想環境の作成と有効化
+**このAPIは本番環境でDockerコンテナとして運用されています。**
 
-```bash
-cd /Users/kaya.matsumoto/api_azure-speech_v1
-python3 -m venv venv
-source venv/bin/activate
-```
-
-### 2. 依存関係のインストール
-
-```bash
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-### 3. 環境変数の設定
+### 環境変数の設定
 
 `.env`ファイルを作成して以下を設定：
 
 ```bash
-# Azure Speech Service設定（必須）
+# Azure Speech Service設定（Azureプロバイダー使用時のみ必須）
 AZURE_SPEECH_KEY=your-azure-speech-key
 AZURE_SERVICE_REGION=japaneast
 
-# WatchMeシステム統合設定（v1.46.0で必須）
+# Groq API設定（Groqプロバイダー使用時のみ必須）
+GROQ_API_KEY=gsk-your-groq-api-key
+
+# WatchMeシステム統合設定（必須）
 # Supabase設定 - audio_filesテーブルからファイル情報を取得
 SUPABASE_URL=your-supabase-url
 SUPABASE_KEY=your-supabase-key
@@ -207,40 +300,7 @@ S3_BUCKET_NAME=watchme-vault
 AWS_REGION=us-east-1
 ```
 
-## 🧪 テスト手順
-
-### ローカルテスト
-
-1. **音声ファイルを準備**
-   - テスト用のWAVファイルを用意（例：`/Users/kaya.matsumoto/Desktop/audio.wav`）
-
-2. **テストスクリプトを実行**
-
-```bash
-# 仮想環境を有効化
-source venv/bin/activate
-
-# 環境変数をクリア（システムに古い設定が残っている場合）
-unset AZURE_SERVICE_REGION
-unset AZURE_SPEECH_KEY
-
-# テスト実行
-python test_transcribe.py
-```
-
-期待される出力：
-```
-✅ テスト成功！
-認識結果: [音声の内容]
-```
-
-### APIサーバーのローカル起動
-
-```bash
-# 仮想環境で起動
-source venv/bin/activate
-uvicorn main:app --host 0.0.0.0 --port 8008 --reload
-```
+**注意**: プロバイダーの指定は `app/asr_providers.py` で行います（環境変数ではありません）。
 
 ## 🌐 本番環境へのデプロイ
 
@@ -415,19 +475,83 @@ WatchMeシステム統合エンドポイント - Supabaseからファイル情�
 }
 ```
 
+## 💻 ローカル開発環境（オプション）
+
+**注意: ローカル開発環境はオプションです。本番環境ではDockerコンテナを使用してください。**
+
+### 1. 仮想環境の作成と有効化
+
+```bash
+cd /Users/kaya.matsumoto/projects/watchme/api/vibe-analysis/transcriber-v2
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### 2. 依存関係のインストール
+
+```bash
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### 3. 環境変数の設定
+
+上記「本番環境での運用」セクションの環境変数設定を参照してください。
+
+### 4. ローカルでの起動
+
+```bash
+# 仮想環境で起動
+source venv/bin/activate
+uvicorn main:app --host 0.0.0.0 --port 8013 --reload
+```
+
+### 5. ローカルテスト
+
+```bash
+# 仮想環境を有効化
+source venv/bin/activate
+
+# テスト実行
+python test_transcribe.py
+```
+
+期待される出力：
+```
+✅ テスト成功！
+認識結果: [音声の内容]
+```
+
+---
+
 ## 🔧 技術仕様
 
 - **Python**: 3.11以上
 - **フレームワーク**: FastAPI
-- **ASR**: Azure Speech Services SDK 1.45.0
-- **統合システム**: WatchMe Platform (v1.46.0〜)
+- **ASRプロバイダー**:
+  - Azure Speech Services SDK 1.45.0
+  - Groq Whisper API (groq>=0.4.0)
+- **統合システム**: WatchMe Platform (v2.0.0〜)
   - **データベース**: Supabase (Python SDK 2.10.0)
   - **ファイルストレージ**: AWS S3 (boto3 1.35.57)
 - **対応形式**: .wav, .mp3, .m4a
-- **言語**: 日本語 (ja-JP)
-- **ポート**: 
-  - ローカル: 8008
-  - 本番: 8013
+- **対応言語**: 日本語、英語など（プロバイダーによる）
+- **ポート**: 8013（ローカル・本番環境で統一）
+
+## 📦 依存関係
+
+主要なパッケージ：
+```txt
+azure-cognitiveservices-speech==1.45.0  # Azure ASR
+groq>=0.4.0                             # Groq Whisper API
+fastapi==0.115.12
+uvicorn==0.34.2
+pydantic==2.11.5
+boto3==1.35.57                          # AWS S3
+supabase==2.10.0                        # Supabase Python SDK
+tenacity>=8.2.0                         # リトライ処理
+pytz==2024.1                            # タイムゾーン処理
+```
 
 ## 🐛 トラブルシューティング
 

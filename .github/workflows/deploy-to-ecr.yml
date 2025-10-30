@@ -42,21 +42,30 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    # ステップ5: Dockerイメージのビルド、タグ付け、プッシュ（ARM64対応）
+    # ステップ5: ECRから古いイメージを削除（オプションだが推奨）
+    - name: Delete old images from ECR
+      run: |
+        aws ecr batch-delete-image \
+          --region ${{ env.AWS_REGION }} \
+          --repository-name ${{ env.ECR_REPOSITORY }} \
+          --image-ids imageTag=latest || true
+
+    # ステップ6: Dockerイメージのビルド、タグ付け、プッシュ（ARM64対応）
     - name: Build, tag, and push image to Amazon ECR
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         IMAGE_TAG: ${{ github.sha }}
       run: |
-        # ARM64アーキテクチャ用にDockerイメージをビルド
+        # ARM64アーキテクチャ用にDockerイメージをビルド（キャッシュ無効化）
         docker buildx build \
           --platform linux/arm64 \
+          --no-cache \
           --push \
           -f Dockerfile.prod \
           -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG \
           -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest \
           .
-        
+
         echo "✅ Image pushed to ECR:"
         echo "  - $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG"
         echo "  - $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest"
@@ -87,28 +96,82 @@ jobs:
     runs-on: ubuntu-latest
     # 重要: deploy ジョブが成功した後にのみ実行
     needs: deploy
-    
+
     steps:
-    # ステップ1: SSHエージェントのセットアップ
+    # ステップ1: コードのチェックアウト（設定ファイルのコピーに必要）
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # ステップ2: SSHエージェントのセットアップ
     - name: Setup SSH Agent
       uses: webfactory/ssh-agent@v0.9.0
       with:
         ssh-private-key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-    
-    # ステップ2: Known Hostsの追加（セキュリティ向上）
+
+    # ステップ3: Known Hostsの追加（セキュリティ向上）
     - name: Add EC2 to known hosts
       run: |
         mkdir -p ~/.ssh
         ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
-    
-    # ステップ3: EC2にデプロイ
+
+    # ステップ4: EC2にディレクトリ作成（べき等性確保）
+    - name: Create application directory on EC2 if not exists
+      env:
+        EC2_HOST: ${{ secrets.EC2_HOST }}
+        EC2_USER: ${{ secrets.EC2_USER }}
+      run: |
+        ssh ${EC2_USER}@${EC2_HOST} "mkdir -p /home/ubuntu/vibe-analysis-transcriber"
+
+    # ステップ5: docker-compose.prod.ymlとrun-prod.shをEC2にコピー
+    - name: Copy configuration files to EC2
+      env:
+        EC2_HOST: ${{ secrets.EC2_HOST }}
+        EC2_USER: ${{ secrets.EC2_USER }}
+      run: |
+        scp docker-compose.prod.yml ${EC2_USER}@${EC2_HOST}:/home/ubuntu/vibe-analysis-transcriber/
+        scp run-prod.sh ${EC2_USER}@${EC2_HOST}:/home/ubuntu/vibe-analysis-transcriber/
+        ssh ${EC2_USER}@${EC2_HOST} "chmod +x /home/ubuntu/vibe-analysis-transcriber/run-prod.sh"
+
+    # ステップ6: EC2に.envファイルを作成/更新（★重要: 環境変数の設定）
+    - name: Create/Update .env file on EC2
+      env:
+        EC2_HOST: ${{ secrets.EC2_HOST }}
+        EC2_USER: ${{ secrets.EC2_USER }}
+        # Supabase設定
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        # AWS S3設定
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        S3_BUCKET_NAME: watchme-vault
+        AWS_REGION: us-east-1
+        # Azure Speech Service設定
+        AZURE_SPEECH_KEY: ${{ secrets.AZURE_SPEECH_KEY }}
+        AZURE_SERVICE_REGION: ${{ secrets.AZURE_SERVICE_REGION }}
+        # Groq API設定（★追加）
+        GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      run: |
+        ssh ${EC2_USER}@${EC2_HOST} << ENDSSH
+          cd /home/ubuntu/vibe-analysis-transcriber
+          echo "SUPABASE_URL=${SUPABASE_URL}" > .env
+          echo "SUPABASE_KEY=${SUPABASE_KEY}" >> .env
+          echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> .env
+          echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> .env
+          echo "S3_BUCKET_NAME=${S3_BUCKET_NAME}" >> .env
+          echo "AWS_REGION=${AWS_REGION}" >> .env
+          echo "AZURE_SPEECH_KEY=${AZURE_SPEECH_KEY}" >> .env
+          echo "AZURE_SERVICE_REGION=${AZURE_SERVICE_REGION}" >> .env
+          echo "GROQ_API_KEY=${GROQ_API_KEY}" >> .env
+        ENDSSH
+
+    # ステップ7: デプロイスクリプト実行
     - name: Deploy to EC2 instance
       env:
         EC2_HOST: ${{ secrets.EC2_HOST }}
         EC2_USER: ${{ secrets.EC2_USER }}
       run: |
         echo "🚀 Starting deployment to EC2..."
-        
+
         # SSHでEC2に接続してデプロイコマンドを実行
         ssh ${EC2_USER}@${EC2_HOST} << 'ENDSSH'
           set -e
@@ -127,12 +190,12 @@ jobs:
           # ヘルスチェック
           echo "🏥 Running health check..."
           sleep 5
-          curl -f http://localhost:8013/ || echo "⚠️ Health check failed"
+          curl -f http://localhost:8013/health || echo "⚠️ Health check failed"
         ENDSSH
-        
+
         echo "✅ EC2 deployment completed successfully!"
-    
-    # ステップ4: デプロイ成功通知
+
+    # ステップ8: デプロイ成功通知
     - name: Deployment Success Notification
       if: success()
       run: |
@@ -140,8 +203,9 @@ jobs:
         echo "📦 Service: vibe-analysis-transcriber"
         echo "🌐 URL: https://api.hey-watch.me/vibe-analysis/transcriber/"
         echo "🏷️ Version: ${{ github.sha }}"
-    
-    # ステップ5: デプロイ失敗通知
+        echo "🤖 ASR Provider: groq/whisper-large-v3-turbo"
+
+    # ステップ9: デプロイ失敗通知
     - name: Deployment Failure Notification
       if: failure()
       run: |

@@ -10,16 +10,19 @@ services:
       # Supabase設定
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_KEY=${SUPABASE_KEY}
-      
+
       # AWS S3設定
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
       - AWS_REGION=${AWS_REGION}
-      
-      # Azure Speech Service設定
+
+      # Azure Speech Service設定（Azureプロバイダー使用時のみ必須）
       - AZURE_SPEECH_KEY=${AZURE_SPEECH_KEY}
       - AZURE_SERVICE_REGION=${AZURE_SERVICE_REGION}
+
+      # Groq API設定（Groqプロバイダー使用時のみ必須）
+      - GROQ_API_KEY=${GROQ_API_KEY}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8013/"]

@@ -24,6 +24,8 @@
 
 - プロバイダー: **Groq**
 - モデル: **whisper-large-v3-turbo**
+- デプロイ日: **2025-10-31**
+- ステータス: **✅ 稼働中**
 
 ### 対応プロバイダー
 
@@ -113,8 +115,9 @@ git push するだけで即座に戻ります。
 
 | 項目 | 値 | 説明 |
 |------|-----|------|
-| **🏷️ サービス名** | Vibe Transcriber API | Azure Speech Services音声文字起こし |
-| **📦 機能** | ASR (音声認識) | Azure Speech Servicesによる文字起こし |
+| **🏷️ サービス名** | Vibe Transcriber API | マルチプロバイダー対応音声文字起こし |
+| **📦 機能** | ASR (音声認識) | Groq Whisper / Azure Speech Services |
+| **🤖 現在のプロバイダー** | Groq | whisper-large-v3-turbo |
 | | | |
 | **🌐 外部アクセス（Nginx）** | | |
 | └ 公開エンドポイント | `https://api.hey-watch.me/vibe-analysis/transcriber/` | ✅ 統一命名規則に準拠（2025-10-28） |
@@ -236,11 +239,18 @@ RESTRICTED_DEVICES = {
 
 ## 📋 更新履歴
 
-最新の変更履歴は [CHANGELOG.md](./CHANGELOG.md) をご覧ください。
+**最新バージョン**: v2.0.0 (2025-10-31)
+- ✅ マルチプロバイダー対応に移行
+- ✅ Groq Whisper API対応（whisper-large-v3-turbo）
+- ✅ プロバイダー抽象化レイヤー実装
+- ✅ Azure / Groq切り替えを1行変更で実現
+- ✅ CI/CD環境変数管理の改善
 
-**最新バージョン**: v1.49.0 (2025-09-23)
+**v1.49.0** (2025-09-23)
 - 処理制限モード機能を追加
 - Quota exceededエラーの検出改善
+
+詳細は [CHANGELOG.md](./CHANGELOG.md) をご覧ください。
 
 ## 🗄️ データベース設定
 

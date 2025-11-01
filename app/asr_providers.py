@@ -419,7 +419,9 @@ class GroqProvider(ASRProvider):
             transcription = self.client.audio.transcriptions.create(
                 file=(filename, audio_file.read()),
                 model=self._model,
-                temperature=0,
+                language="ja",  # 日本語として認識（精度向上＋ハルシネーション抑制）
+                prompt="日本語の会話。無音や雑音のみの場合は空文字を返してください。",  # ハルシネーション抑制
+                temperature=0.0,  # 確定的な出力（ランダム性なし）
                 response_format="verbose_json",
             )
 

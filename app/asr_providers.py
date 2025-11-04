@@ -716,10 +716,19 @@ class AiolaProvider(ASRProvider):
 
             # aiOla Jargonic API呼び出し
             # SDKの transcribe_file メソッドを使用
-            transcript = self.client.stt.transcribe_file(
-                file=audio_file,
-                language="ja",  # 日本語
-            )
+            try:
+                logger.info("🎙️ aiOla API呼び出し開始...")
+                transcript = self.client.stt.transcribe_file(
+                    file=audio_file,
+                    language="ja",  # 日本語
+                )
+                logger.info("✅ aiOla API呼び出し成功")
+            except Exception as api_error:
+                logger.error(f"❌ aiOla API呼び出し失敗: {type(api_error).__name__}: {api_error}")
+                # エラーの詳細を確認
+                if hasattr(api_error, '__dict__'):
+                    logger.error(f"❌ エラー詳細: {api_error.__dict__}")
+                raise
 
             # 処理時間計測終了
             processing_time = time.time() - start_time

@@ -558,9 +558,9 @@ class DeepgramProvider(ASRProvider):
                 utterances=options["utterances"],
             )
 
-            # 公式ドキュメント: deepgram.listen.v1.media.transcribe_file(request=bytes, options=PrerecordedOptions)
-            response = self.client.listen.v1.media.transcribe_file(
-                request=audio_data,
+            # SDK v3.7.0の正しいAPI: client.listen.rest.v("1").transcribe_file()
+            response = self.client.listen.rest.v("1").transcribe_file(
+                source={"buffer": audio_data},
                 options=prerecorded_options
             )
 

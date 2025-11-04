@@ -707,12 +707,19 @@ class AiolaProvider(ASRProvider):
         high_accuracy: bool = False
     ) -> Dict[str, Any]:
         """aiOla Jargonic APIで音声ファイルを文字起こし（リトライ付き）"""
+        logger.info("=" * 50)
+        logger.info("🚀 aiOla transcribe_audio メソッド開始")
+        logger.info(f"🔍 filename: {filename}")
+        logger.info("=" * 50)
+
         try:
             # 処理時間計測開始
             start_time = time.time()
 
+            logger.info("📍 ステップ1: audio_fileの位置を先頭に戻す")
             # audio_fileの位置を先頭に戻す
             audio_file.seek(0)
+            logger.info("✅ ステップ1完了")
 
             # デバッグ: audio_fileの状態確認
             logger.info(f"🔍 audio_file型: {type(audio_file)}")

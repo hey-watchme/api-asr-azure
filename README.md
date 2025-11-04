@@ -23,10 +23,23 @@
 ### 現在使用中
 
 - プロバイダー: **Deepgram**
-- モデル: **nova-3**
+- モデル: **nova-2**
 - デプロイ日: **2025-11-04**
 - ステータス: **✅ 稼働中・動作確認済み**
 - SDK バージョン: **deepgram-sdk==3.7.0**
+- 処理速度: **2.96秒**（テスト済み）
+
+### 📋 2025-11-04 プロバイダー比較テスト結果
+
+| プロバイダー | モデル | 処理時間 | 精度 | 推奨度 |
+|------------|--------|---------|------|--------|
+| **Deepgram** | nova-2 | 2.96秒 | 高 | ✅ **現在稼働中** |
+| **Groq** | whisper-large-v3-turbo | 0.78秒 | 高速だが**ハルシネーション多** | ❌ 非推奨 |
+| **Groq** | whisper-large-v3 | 未テスト | 推定：ハルシネーション少 | 🔍 **次回テスト推奨** |
+| **Azure** | ja-JP | 27.46秒 | 中 | ❌ 遅すぎて非推奨 |
+| **aiOla** | jargonic-v2 | - | - | ❌ SDK実装失敗（保留中） |
+
+**詳細レポート**: `/Users/kaya.matsumoto/Desktop/20251104_002/asr_comparison_results_20251104.md`
 
 ### 対応プロバイダー
 
@@ -279,6 +292,37 @@ git push origin main
    - モデル一覧: https://console.groq.com/docs/models
    - Python SDK GitHub: https://github.com/groq/groq-python
 
+#### ⚠️ Whisper Turbo のハルシネーション問題（2025-11-04）
+
+**問題点**:
+- **whisper-large-v3-turbo** はハルシネーション（幻聴）が発生する
+- 実際には発話されていない内容を文字起こししてしまう
+- 本番運用には不適切
+
+**推奨対応**:
+通常の **whisper-large-v3** モデルへの切り替えを検討
+
+**切り替え方法**:
+```python
+# app/asr_providers.py
+CURRENT_PROVIDER = "groq"
+CURRENT_MODEL = "whisper-large-v3"  # turbo を削除
+```
+
+**利用可能なWhisperモデル**:
+- `whisper-large-v3` - 通常版（ハルシネーション少ない、処理時間は turbo より遅い）
+- `whisper-large-v3-turbo` - 高速版（❌ ハルシネーション多い）
+
+**モデル比較**（推定）:
+| モデル | 処理速度 | ハルシネーション | 推奨度 |
+|--------|----------|-----------------|--------|
+| whisper-large-v3 | 中速 | 少ない | ✅ 推奨 |
+| whisper-large-v3-turbo | 最速 (0.78秒) | **多い** | ❌ 非推奨 |
+
+**テスト推奨**:
+- 同じ音声ファイルで `whisper-large-v3` をテストし、ハルシネーションの有無を確認
+- `/Users/kaya.matsumoto/Desktop/20251104_002/audio.wav` で比較テスト可能
+
 ---
 
 ### 3. Deepgram (現在稼働中) ⭐
@@ -417,6 +461,84 @@ git push origin main
    CURRENT_PROVIDER = "aiola"
    CURRENT_MODEL = "jargonic-v2"
    ```
+
+---
+
+### ⚠️ aiOla Jargonic v2 実装失敗（2025-11-04）
+
+**ステータス**: ❌ **実装不可能（一時保留）**
+
+#### 🔍 問題の詳細
+
+**エラー内容**:
+```
+AiolaError: Transcription failed: 'transcript'
+```
+
+**発生箇所**: `client.stt.transcribe_file()` メソッド呼び出し時
+
+**試行した対応**:
+1. ✅ APIキー設定確認 → 正常（環境変数 `AIOLA_API_KEY` 設定済み）
+2. ✅ SDK初期化確認 → 正常（`AiolaClient.grant_token()` 成功）
+3. ✅ デバッグログ追加（複数回） → エラーはSDK内部で発生
+4. ❌ レスポンス構造の特定 → SDK内部エラーのため特定不可
+
+#### 🤔 推測される原因
+
+1. **aiOla Python SDKのバグまたは仕様変更**
+   - エラーメッセージ: `'transcript'` キーが見つからない
+   - SDK（aiola==0.2.0）のレスポンス構造がドキュメントと異なる可能性
+   - 内部的に `transcript` キーを期待しているが、実際のAPIレスポンスには存在しない
+
+2. **audio_fileの形式問題**
+   - 他のプロバイダー（Groq、Deepgram、Azure）では同じ audio_file で成功
+   - aiOla SDKが期待する形式が異なる可能性（バイナリ vs ファイルオブジェクト）
+
+3. **日本語対応の問題**
+   - `language='ja'` を指定しているが、SDKまたはAPIが日本語に完全対応していない可能性
+
+#### 📋 次のエンジニアへの引き継ぎ事項
+
+**実装コード場所**:
+- ファイル: `/Users/kaya.matsumoto/projects/watchme/api/vibe-analysis/transcriber-v2/app/asr_providers.py`
+- クラス: `AiolaProvider` (675行目〜)
+- メソッド: `transcribe_audio()`
+
+**環境変数**:
+```bash
+# EC2コンテナ内で確認済み
+AIOLA_API_KEY=ak_6d9069f7ea494a5f9afbc0d04d09b35cba75dd5699b35d230e19209b3bcff8df
+```
+
+**調査が必要な点**:
+1. **aiOla SDK v0.2.0のソースコード確認**
+   - GitHub: https://github.com/aiola-lab/aiola-python-sdk
+   - `transcribe_file()` メソッドの実装を確認
+   - 実際のAPIレスポンス構造を特定
+
+2. **代替アプローチの検討**:
+   - REST API直接呼び出し（SDK経由ではなく）
+   - SDKバージョンの変更（0.2.0以外を試す）
+   - ファイルの渡し方を変更（バイナリデータ、ファイルパスなど）
+
+3. **aiOlaサポートへの問い合わせ**:
+   - Python SDKでの日本語音声文字起こしの正しい実装方法
+   - `'transcript'` エラーの原因
+
+**テスト用音声ファイル**:
+- パス: `/Users/kaya.matsumoto/Desktop/20251104_002/audio.wav` (1.8MB)
+- 形式: WAV
+- 他プロバイダーでの成功実績あり（Groq 0.78秒、Deepgram 2.96秒、Azure 27.46秒）
+
+**デバッグログ追加済み**:
+- コミットハッシュ: 663463f
+- ログ内容: audio_file型、ファイル名、API呼び出しパラメータ
+- しかし、ログが出力されない → SDK内部で即座にエラーが発生している
+
+**推奨アクション**:
+1. aiOla SDKのソースコードをローカルで読む
+2. REST APIドキュメントを確認し、SDK経由ではなく直接APIを呼び出すコードを試す
+3. aiOlaのDiscordコミュニティやGitHub Issuesで同様の問題を検索
 
 ---
 

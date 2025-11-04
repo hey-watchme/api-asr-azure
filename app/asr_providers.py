@@ -545,16 +545,23 @@ class DeepgramProvider(ASRProvider):
                     "tier": "nova",  # 最高精度
                 })
 
-            # Deepgram API呼び出し（SDK v5.3.0）
-            # 公式ドキュメント: client.listen.v1.media.transcribe_file(request=bytes, **options)
-            response = self.client.listen.v1.media.transcribe_file(
-                request=audio_data,
+            # Deepgram API呼び出し（SDK v3.7.0 - 公式ドキュメント準拠）
+            from deepgram import PrerecordedOptions
+
+            # PrerecordedOptionsオブジェクトを作成
+            prerecorded_options = PrerecordedOptions(
                 model=options["model"],
                 language=options["language"],
                 punctuate=options["punctuate"],
                 diarize=options["diarize"],
                 smart_format=options["smart_format"],
                 utterances=options["utterances"],
+            )
+
+            # 公式ドキュメント: deepgram.listen.v1.media.transcribe_file(request=bytes, options=PrerecordedOptions)
+            response = self.client.listen.v1.media.transcribe_file(
+                request=audio_data,
+                options=prerecorded_options
             )
 
             # 処理時間計測終了

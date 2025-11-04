@@ -503,7 +503,7 @@ class DeepgramProvider(ASRProvider):
         if not api_key:
             raise ValueError("DEEPGRAM_API_KEY環境変数が設定されていません")
 
-        self.client = DeepgramClient(api_key)
+        self.client = DeepgramClient(api_key=api_key)  # キーワード引数で渡す
         self._model = model
 
         logger.info(f"Deepgram API初期化完了: model={model}")

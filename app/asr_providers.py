@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 # 🔧 現在使用中のASRプロバイダー設定
 # ==========================================
 # この行を変更するだけでプロバイダーを切り替え可能
-CURRENT_PROVIDER = "groq"  # "azure" または "groq"
-CURRENT_MODEL = "whisper-large-v3-turbo"  # Azure: "ja-JP", Groq: "whisper-large-v3-turbo"
+CURRENT_PROVIDER = "deepgram"  # "azure", "groq", または "deepgram"
+CURRENT_MODEL = "nova-3"  # Azure: "ja-JP", Groq: "whisper-large-v3-turbo", Deepgram: "nova-3"
 # ==========================================
 
 

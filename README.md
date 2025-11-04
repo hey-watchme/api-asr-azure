@@ -35,6 +35,39 @@
 | **Groq** | whisper-large-v3-turbo, whisper-large-v3 | GROQ_API_KEY | ✅ 設定済み（現在使用中） |
 | **Deepgram** | nova-3, nova-2, whisper, enhanced | DEEPGRAM_API_KEY | ✅ 設定済み（句読点・話者分離対応） |
 
+### 新しいプロバイダーを追加する方法
+
+#### ⚠️ 必須チェックリスト（3箇所セット）
+
+新しいプロバイダー（例: Deepgram）を追加する際は、**必ず以下の3箇所**を更新してください：
+
+**1. GitHub Secrets に APIキーを追加**
+```
+リポジトリの Settings > Secrets and variables > Actions
+例: DEEPGRAM_API_KEY = your-api-key
+```
+
+**2. docker-compose.prod.yml に環境変数を追加**
+```yaml
+environment:
+  - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}  # ← 追加
+```
+
+**3. .github/workflows/deploy-to-ecr.yml を更新**
+```yaml
+# 3-a. env: セクションに追加
+env:
+  DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
+
+# 3-b. .env作成スクリプトに追加
+echo "DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}" >> .env
+```
+
+**❌ よくある失敗**: GitHub Secretsと.envファイルには追加したが、docker-compose.ymlを忘れる
+→ コンテナ起動時に「環境変数が設定されていません」エラーになります
+
+---
+
 ### プロバイダー切り替え方法
 
 #### Azure → Groq に切り替える場合

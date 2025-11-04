@@ -35,7 +35,7 @@
 | **Azure** | ja-JP (日本語), en-US (英語) | AZURE_SPEECH_KEY, AZURE_SERVICE_REGION | ✅ 設定済み | azure-cognitiveservices-speech==1.45.0 |
 | **Groq** | whisper-large-v3-turbo, whisper-large-v3 | GROQ_API_KEY | ✅ 設定済み | groq>=0.4.0 |
 | **Deepgram** | nova-3, nova-2, whisper, enhanced | DEEPGRAM_API_KEY | ✅ **稼働中**（句読点・話者分離対応） | deepgram-sdk==3.7.0 |
-| **aiOla** | jargonic-v2 | AIOLA_API_KEY | ✅ **設定完了・使用可能**（業界特化・95%精度） | aiola>=1.0.0 |
+| **aiOla** | jargonic-v2 | AIOLA_API_KEY | ✅ **設定完了・使用可能**（業界特化・95%精度） | aiola==0.2.0 |
 
 ### 新しいプロバイダーを追加する方法
 
@@ -380,7 +380,7 @@ git push origin main
 
 3. **requirements.txt**:
    ```
-   aiola>=1.0.0
+   aiola==0.2.0
    ```
 
    **要件**: Python 3.10以上

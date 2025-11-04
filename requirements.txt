@@ -9,5 +9,5 @@ supabase==2.10.0
 pytz==2024.1
 groq>=0.4.0
 deepgram-sdk==3.7.0
-aiola>=1.0.0
+aiola==0.2.0
 tenacity>=8.2.0 

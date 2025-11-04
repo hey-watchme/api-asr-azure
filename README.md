@@ -35,6 +35,7 @@
 | **Azure** | ja-JP (日本語), en-US (英語) | AZURE_SPEECH_KEY, AZURE_SERVICE_REGION | ✅ 設定済み | azure-cognitiveservices-speech==1.45.0 |
 | **Groq** | whisper-large-v3-turbo, whisper-large-v3 | GROQ_API_KEY | ✅ 設定済み | groq>=0.4.0 |
 | **Deepgram** | nova-3, nova-2, whisper, enhanced | DEEPGRAM_API_KEY | ✅ **稼働中**（句読点・話者分離対応） | deepgram-sdk==3.7.0 |
+| **aiOla** | jargonic-v2 | AIOLA_API_KEY | ✅ **設定完了・使用可能**（業界特化・95%精度） | aiola>=1.0.0 |
 
 ### 新しいプロバイダーを追加する方法
 
@@ -168,6 +169,41 @@ git push origin main
 - ✅ スマートフォーマット - 日付、時刻、数字の自動整形
 - ✅ 発話単位での区切り (utterances)
 - ✅ 高精度な信頼度スコア提供
+
+#### aiOla Jargonic に切り替える場合
+
+**ステップ1: aiOla APIキーの準備**
+
+1. aiOla APIキーを取得: https://console.aiola.ai/
+2. 環境変数に追加（ローカル・本番環境の `.env` ファイル）:
+   ```bash
+   AIOLA_API_KEY=ak_your-aiola-api-key
+   ```
+
+**ステップ2: プロバイダーを切り替え**
+
+```python
+# app/asr_providers.py
+CURRENT_PROVIDER = "aiola"
+CURRENT_MODEL = "jargonic-v2"
+```
+
+**ステップ3: デプロイ**
+
+```bash
+git add app/asr_providers.py
+git commit -m "feat: Switch to aiOla Jargonic v2"
+git push origin main
+
+# CI/CDが自動実行（約5分）
+```
+
+**aiOla Jargonicの特徴**:
+- ✅ 業界特化の高精度ASR（95%以上の精度）
+- ✅ 技術用語・専門用語の認識に特化
+- ✅ 騒音環境・複数話者・非標準アクセントに対応
+- ✅ 日本語を含む多言語対応
+- ✅ キーワードスポッティング機能
 
 ---
 
@@ -313,6 +349,74 @@ git push origin main
    - SDK v3.7.0 の正しいAPI: `client.listen.rest.v("1").transcribe_file()`
    - SDK v5.x の場合: `client.listen.v1.media.transcribe_file()` （異なるAPI）
    - ドキュメントが混在しているため、**必ずPlaygroundで確認**すること
+
+---
+
+### 4. aiOla Jargonic ASR v2
+
+**公式ドキュメント**:
+- メインドキュメント: https://docs.aiola.ai/get-started/overview
+- Python SDK: https://github.com/aiola-lab/aiola-python-sdk
+- Jargonic紹介: https://aiola.ai/jargonic/
+
+**特徴**:
+- ✅ **Jargonic v2**: 業界特化の高精度ASRモデル
+- ✅ 技術用語・専門用語の認識に特化（ゼロショット認識）
+- ✅ 騒音環境・複数話者・非標準アクセントに対応
+- ✅ 95%以上の精度（どの言語・アクセント・音響環境でも）
+- ✅ 日本語を含む多言語対応
+- ✅ キーワードスポッティング機能
+
+**導入プロセス**:
+
+1. **aiOla APIキーを取得**:
+   - https://console.aiola.ai/ でアカウント作成
+   - API Keys セクションでキーを生成
+
+2. **環境変数**:
+   ```bash
+   AIOLA_API_KEY=ak_your-api-key
+   ```
+
+3. **requirements.txt**:
+   ```
+   aiola>=1.0.0
+   ```
+
+   **要件**: Python 3.10以上
+
+4. **コード例**:
+   ```python
+   from aiola import AiolaClient
+
+   # アクセストークンを取得
+   result = AiolaClient.grant_token(api_key=api_key)
+   client = AiolaClient(access_token=result.access_token)
+
+   # 音声ファイルを文字起こし
+   with open('path/to/audio.wav', 'rb') as audio_file:
+       transcript = client.stt.transcribe_file(
+           file=audio_file,
+           language='ja',  # 日本語
+           keywords={      # オプション: キーワード補正
+               "postgres": "PostgreSQL",
+               "k eight s": "Kubernetes"
+           }
+       )
+   ```
+
+5. **参照すべき情報**:
+   - **Getting Started**: https://docs.aiola.ai/get-started/overview
+   - **Python SDK GitHub**: https://github.com/aiola-lab/aiola-python-sdk
+   - **Jargonic Benchmarks**: https://aiola.ai/benchmarks/
+   - **日本語ASR性能**: https://aiola.ai/blog/jargonic-japanese-asr
+
+6. **切り替え方法**:
+   ```python
+   # app/asr_providers.py
+   CURRENT_PROVIDER = "aiola"
+   CURRENT_MODEL = "jargonic-v2"
+   ```
 
 ---
 
@@ -484,6 +588,9 @@ GROQ_API_KEY=gsk-your-groq-api-key
 
 # Deepgram API設定（Deepgramプロバイダー使用時のみ必須）
 DEEPGRAM_API_KEY=your-deepgram-api-key
+
+# aiOla API設定（aiOlaプロバイダー使用時のみ必須）
+AIOLA_API_KEY=ak_your-aiola-api-key
 
 # WatchMeシステム統合設定（必須）
 # Supabase設定 - audio_filesテーブルからファイル情報を取得
@@ -718,6 +825,74 @@ python test_transcribe.py
 ✅ テスト成功！
 認識結果: [音声の内容]
 ```
+
+---
+
+## 🧪 プロバイダー比較テスト（デプロイ不要）
+
+**新機能**: 同じ音声ファイルで複数のプロバイダーの精度を比較できます。
+
+### ローカルでDockerコンテナを起動
+
+```bash
+cd /Users/kaya.matsumoto/projects/watchme/api/vibe-analysis/transcriber-v2
+docker-compose up --build
+```
+
+### curlで各プロバイダーをテスト
+
+**1. デフォルトプロバイダー（現在の設定）でテスト**
+```bash
+curl -X POST "http://localhost:8013/analyze/azure" \
+  -F "file=@/path/to/audio.wav" | jq
+```
+
+**2. Azure Speech Services でテスト**
+```bash
+curl -X POST "http://localhost:8013/analyze/azure?provider=azure&model=ja-JP" \
+  -F "file=@/path/to/audio.wav" | jq
+```
+
+**3. Groq Whisper でテスト**
+```bash
+curl -X POST "http://localhost:8013/analyze/azure?provider=groq&model=whisper-large-v3-turbo" \
+  -F "file=@/path/to/audio.wav" | jq
+```
+
+**4. Deepgram Nova でテスト**
+```bash
+curl -X POST "http://localhost:8013/analyze/azure?provider=deepgram&model=nova-3" \
+  -F "file=@/path/to/audio.wav" | jq
+```
+
+**5. aiOla Jargonic でテスト**
+```bash
+curl -X POST "http://localhost:8013/analyze/azure?provider=aiola&model=jargonic-v2" \
+  -F "file=@/path/to/audio.wav" | jq
+```
+
+### レスポンス例
+
+```json
+{
+  "transcription": "こんにちは、これはテストです。",
+  "confidence": 0.95,
+  "processing_time": 2.3,
+  "word_count": 5,
+  "estimated_duration": 1.8,
+  "asr_provider": "aiola",
+  "asr_model": "aiola/jargonic-v2"
+}
+```
+
+### 精度比較のポイント
+
+- **transcription**: 文字起こし結果の正確性
+- **confidence**: 信頼度スコア（0.0-1.0）
+- **processing_time**: 処理速度
+- **word_count**: 単語数（セグメンテーション精度の参考）
+
+**Tips**: 同じ音声ファイルで全プロバイダーをテストし、精度・速度・コストを比較して最適なプロバイダーを選択できます。
 
 ---
 

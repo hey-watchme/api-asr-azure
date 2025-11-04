@@ -9,6 +9,8 @@ class TranscriptionResponse(BaseModel):
     estimated_duration: Optional[float] = None
     mode: Optional[str] = None
     timeout_used: Optional[int] = None
+    asr_provider: Optional[str] = None  # 使用したプロバイダー名
+    asr_model: Optional[str] = None  # 使用したモデル名
 
 class FetchAndTranscribeRequest(BaseModel):
     # 新しいインターフェース

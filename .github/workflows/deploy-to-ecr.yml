@@ -152,6 +152,8 @@ jobs:
         GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         # Deepgram API設定
         DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
+        # aiOla API設定
+        AIOLA_API_KEY: ${{ secrets.AIOLA_API_KEY }}
       run: |
         ssh ${EC2_USER}@${EC2_HOST} << ENDSSH
           cd /home/ubuntu/vibe-analysis-transcriber
@@ -165,6 +167,7 @@ jobs:
           echo "AZURE_SERVICE_REGION=${AZURE_SERVICE_REGION}" >> .env
           echo "GROQ_API_KEY=${GROQ_API_KEY}" >> .env
           echo "DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}" >> .env
+          echo "AIOLA_API_KEY=${AIOLA_API_KEY}" >> .env
         ENDSSH
 
     # ステップ7: デプロイスクリプト実行

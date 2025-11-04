@@ -24,6 +24,9 @@ services:
 
       # Deepgram API設定（Deepgramプロバイダー使用時のみ必須）
       - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
+
+      # aiOla API設定（aiOlaプロバイダー使用時のみ必須）
+      - AIOLA_API_KEY=${AIOLA_API_KEY}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8013/"]

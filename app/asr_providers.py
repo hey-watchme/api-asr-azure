@@ -672,6 +672,132 @@ class DeepgramProvider(ASRProvider):
         return f"deepgram/{self._model}"
 
 
+class AiolaProvider(ASRProvider):
+    """aiOla Jargonic ASR v2 プロバイダー"""
+
+    def __init__(self, model: str = "jargonic-v2"):
+        """
+        Args:
+            model (str): 使用するaiOlaモデル名
+                例: "jargonic-v2"
+        """
+        from aiola import AiolaClient  # 遅延インポート
+
+        api_key = os.getenv("AIOLA_API_KEY")
+        if not api_key:
+            raise ValueError("AIOLA_API_KEY環境変数が設定されていません")
+
+        # アクセストークンを取得
+        result = AiolaClient.grant_token(api_key=api_key)
+        self.client = AiolaClient(access_token=result.access_token)
+        self._model = model
+
+        logger.info(f"aiOla Jargonic API初期化完了: model={model}")
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(Exception)
+    )
+    async def transcribe_audio(
+        self,
+        audio_file: BinaryIO,
+        filename: str,
+        detailed: bool = False,
+        high_accuracy: bool = False
+    ) -> Dict[str, Any]:
+        """aiOla Jargonic APIで音声ファイルを文字起こし（リトライ付き）"""
+        try:
+            # 処理時間計測開始
+            start_time = time.time()
+
+            # audio_fileの位置を先頭に戻す
+            audio_file.seek(0)
+
+            # aiOla Jargonic API呼び出し
+            # SDKの transcribe_file メソッドを使用
+            transcript = self.client.stt.transcribe_file(
+                file=audio_file,
+                language="ja",  # 日本語
+            )
+
+            # 処理時間計測終了
+            processing_time = time.time() - start_time
+
+            # テキスト取得（transcriptの構造に応じて調整が必要な場合がある）
+            # aiOla SDKのレスポンス形式に応じて適切に処理
+            if hasattr(transcript, 'text'):
+                transcription_text = transcript.text.strip() if transcript.text else ""
+            elif isinstance(transcript, str):
+                transcription_text = transcript.strip()
+            elif isinstance(transcript, dict):
+                transcription_text = transcript.get('text', '').strip()
+            else:
+                transcription_text = str(transcript).strip()
+
+            # 発話なしの判定
+            if not transcription_text:
+                return {
+                    "transcription": "",
+                    "processing_time": round(processing_time, 2),
+                    "confidence": 0.0,
+                    "word_count": 0,
+                    "estimated_duration": 0.0,
+                    "no_speech_detected": True
+                }
+
+            # 単語数計算
+            words = transcription_text.split()
+            word_count = len(words)
+
+            # aiOlaは信頼度を直接提供しない可能性があるため、テキスト長から推定
+            text_length = len(transcription_text)
+            if text_length > 50:
+                confidence = 0.95
+            elif text_length > 20:
+                confidence = 0.90
+            elif text_length > 5:
+                confidence = 0.85
+            else:
+                confidence = 0.75
+
+            # durationを取得（利用可能な場合）
+            duration = 0.0
+            if hasattr(transcript, 'duration'):
+                duration = transcript.duration
+            elif isinstance(transcript, dict) and 'duration' in transcript:
+                duration = transcript['duration']
+
+            result = {
+                "transcription": transcription_text,
+                "processing_time": round(processing_time, 2),
+                "confidence": confidence,
+                "word_count": word_count,
+                "estimated_duration": round(duration, 2) if duration > 0 else round(processing_time * 0.8, 2)
+            }
+
+            # 詳細モード（利用可能な場合）
+            if detailed:
+                result["detailed_mode"] = True
+                # aiOla SDKが提供する追加情報があれば含める
+                if hasattr(transcript, '__dict__'):
+                    result["raw_response"] = transcript.__dict__
+
+            return result
+
+        except Exception as e:
+            logger.error(f"❌ aiOla Jargonic API呼び出しエラー: {e}")
+            raise HTTPException(status_code=500, detail=f"aiOla音声処理エラー: {str(e)}")
+
+    @property
+    def provider_name(self) -> str:
+        return "aiola"
+
+    @property
+    def model_name(self) -> str:
+        return f"aiola/{self._model}"
+
+
 class ASRFactory:
     """ASRプロバイダーのファクトリークラス"""
 
@@ -704,10 +830,14 @@ class ASRFactory:
             default_model = "nova-3"
             return DeepgramProvider(model or default_model)
 
+        elif provider == "aiola":
+            default_model = "jargonic-v2"
+            return AiolaProvider(model or default_model)
+
         else:
             raise ValueError(
                 f"未知のプロバイダー: {provider}\n"
-                f"対応プロバイダー: azure, groq, deepgram"
+                f"対応プロバイダー: azure, groq, deepgram, aiola"
             )
 
     @staticmethod

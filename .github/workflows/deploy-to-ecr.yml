@@ -148,8 +148,10 @@ jobs:
         # Azure Speech Service設定
         AZURE_SPEECH_KEY: ${{ secrets.AZURE_SPEECH_KEY }}
         AZURE_SERVICE_REGION: ${{ secrets.AZURE_SERVICE_REGION }}
-        # Groq API設定（★追加）
+        # Groq API設定
         GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        # Deepgram API設定
+        DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
       run: |
         ssh ${EC2_USER}@${EC2_HOST} << ENDSSH
           cd /home/ubuntu/vibe-analysis-transcriber
@@ -162,6 +164,7 @@ jobs:
           echo "AZURE_SPEECH_KEY=${AZURE_SPEECH_KEY}" >> .env
           echo "AZURE_SERVICE_REGION=${AZURE_SERVICE_REGION}" >> .env
           echo "GROQ_API_KEY=${GROQ_API_KEY}" >> .env
+          echo "DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}" >> .env
         ENDSSH
 
     # ステップ7: デプロイスクリプト実行

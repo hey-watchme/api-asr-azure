@@ -828,50 +828,96 @@ python test_transcribe.py
 
 ---
 
-## 🧪 プロバイダー比較テスト（デプロイ不要）
+## 🧪 動的プロバイダー切り替え機能（テスト・比較用）
 
-**新機能**: 同じ音声ファイルで複数のプロバイダーの精度を比較できます。
+### 📋 概要
 
-### ローカルでDockerコンテナを起動
+**v2.1.0の新機能**: デプロイ不要で複数のASRプロバイダーを動的に切り替えてテストできます。
+
+**用途**:
+- ✅ 同じ音声で複数プロバイダーの精度を比較
+- ✅ 新しいプロバイダーをコード変更なしで評価
+- ✅ A/Bテストで最適なプロバイダーを選定
+- ✅ コスト・速度・精度のトレードオフを実測
+
+**通常運用との違い**:
+- **通常運用**: `app/asr_providers.py` でプロバイダーを固定（安定稼働）
+- **テスト用**: APIリクエスト時にクエリパラメータで指定（柔軟比較）
+
+---
+
+### 🚀 使い方
+
+#### 基本構文
 
 ```bash
+curl -X POST "{API_URL}/analyze/azure?provider={provider}&model={model}" \
+  -F "file=@/path/to/audio.wav"
+```
+
+**パラメータ**:
+- `provider` (optional): プロバイダー名（azure, groq, deepgram, aiola）
+- `model` (optional): モデル名（省略時はデフォルト）
+
+**指定しない場合**: `app/asr_providers.py` の `CURRENT_PROVIDER` と `CURRENT_MODEL` が使用される
+
+---
+
+### 📝 実行例
+
+#### 1. ローカル環境でテスト
+
+```bash
+# Dockerコンテナを起動
 cd /Users/kaya.matsumoto/projects/watchme/api/vibe-analysis/transcriber-v2
 docker-compose up --build
-```
 
-### curlで各プロバイダーをテスト
-
-**1. デフォルトプロバイダー（現在の設定）でテスト**
-```bash
+# デフォルトプロバイダーでテスト
 curl -X POST "http://localhost:8013/analyze/azure" \
   -F "file=@/path/to/audio.wav" | jq
-```
 
-**2. Azure Speech Services でテスト**
-```bash
+# Azureで明示的にテスト
 curl -X POST "http://localhost:8013/analyze/azure?provider=azure&model=ja-JP" \
   -F "file=@/path/to/audio.wav" | jq
-```
 
-**3. Groq Whisper でテスト**
-```bash
+# Groq Whisper でテスト
 curl -X POST "http://localhost:8013/analyze/azure?provider=groq&model=whisper-large-v3-turbo" \
   -F "file=@/path/to/audio.wav" | jq
-```
 
-**4. Deepgram Nova でテスト**
-```bash
+# Deepgram Nova-3 でテスト
 curl -X POST "http://localhost:8013/analyze/azure?provider=deepgram&model=nova-3" \
   -F "file=@/path/to/audio.wav" | jq
-```
 
-**5. aiOla Jargonic でテスト**
-```bash
+# aiOla Jargonic v2 でテスト
 curl -X POST "http://localhost:8013/analyze/azure?provider=aiola&model=jargonic-v2" \
   -F "file=@/path/to/audio.wav" | jq
 ```
 
-### レスポンス例
+#### 2. 本番環境でテスト（推奨）
+
+**メリット**: サーバーが常時稼働しているため、いつでもどこからでもテスト可能
+
+```bash
+# Azure Speech Services
+curl -X POST "https://api.hey-watch.me/vibe-analysis/transcriber/analyze/azure?provider=azure&model=ja-JP" \
+  -F "file=@/path/to/audio.wav" | python3 -m json.tool
+
+# Groq Whisper v3 Turbo
+curl -X POST "https://api.hey-watch.me/vibe-analysis/transcriber/analyze/azure?provider=groq&model=whisper-large-v3-turbo" \
+  -F "file=@/path/to/audio.wav" | python3 -m json.tool
+
+# Deepgram Nova-3
+curl -X POST "https://api.hey-watch.me/vibe-analysis/transcriber/analyze/azure?provider=deepgram&model=nova-3" \
+  -F "file=@/path/to/audio.wav" | python3 -m json.tool
+
+# aiOla Jargonic v2（業界特化・高精度）
+curl -X POST "https://api.hey-watch.me/vibe-analysis/transcriber/analyze/azure?provider=aiola&model=jargonic-v2" \
+  -F "file=@/path/to/audio.wav" | python3 -m json.tool
+```
+
+---
+
+### 📊 レスポンス形式
 
 ```json
 {
@@ -885,14 +931,83 @@ curl -X POST "http://localhost:8013/analyze/azure?provider=aiola&model=jargonic-
 }
 ```
 
-### 精度比較のポイント
+**フィールド説明**:
+- `transcription`: 文字起こし結果（メイン出力）
+- `confidence`: 信頼度スコア（0.0-1.0、高いほど正確）
+- `processing_time`: 処理時間（秒）
+- `word_count`: 単語数
+- `estimated_duration`: 推定音声長（秒）
+- `asr_provider`: 使用したプロバイダー名
+- `asr_model`: 使用したモデル名
 
-- **transcription**: 文字起こし結果の正確性
-- **confidence**: 信頼度スコア（0.0-1.0）
-- **processing_time**: 処理速度
-- **word_count**: 単語数（セグメンテーション精度の参考）
+---
 
-**Tips**: 同じ音声ファイルで全プロバイダーをテストし、精度・速度・コストを比較して最適なプロバイダーを選択できます。
+### 🎯 プロバイダー比較のベストプラクティス
+
+#### 1. 同じ音声で全プロバイダーをテスト
+
+```bash
+# テスト用音声ファイル
+AUDIO_FILE="/path/to/test_audio.wav"
+
+# 全プロバイダーで実行
+for provider in "azure:ja-JP" "groq:whisper-large-v3-turbo" "deepgram:nova-3" "aiola:jargonic-v2"; do
+  IFS=':' read -r prov model <<< "$provider"
+  echo "Testing: $prov / $model"
+  curl -X POST "https://api.hey-watch.me/vibe-analysis/transcriber/analyze/azure?provider=$prov&model=$model" \
+    -F "file=@$AUDIO_FILE" | python3 -m json.tool
+  echo "---"
+done
+```
+
+#### 2. 評価ポイント
+
+| 項目 | 確認方法 | 重要度 |
+|-----|---------|--------|
+| **精度** | `transcription` の正確性を目視確認 | ⭐⭐⭐ |
+| **速度** | `processing_time` を比較 | ⭐⭐⭐ |
+| **信頼度** | `confidence` スコアを確認 | ⭐⭐ |
+| **コスト** | 各プロバイダーの料金体系を確認 | ⭐⭐⭐ |
+
+#### 3. 比較結果の記録
+
+```bash
+# 結果をファイルに保存
+curl -X POST "https://api.hey-watch.me/vibe-analysis/transcriber/analyze/azure?provider=aiola&model=jargonic-v2" \
+  -F "file=@test.wav" | python3 -m json.tool > results/aiola_result.json
+```
+
+---
+
+### ⚠️ 注意事項
+
+1. **本番運用への影響なし**: テスト用パラメータは既存の処理に影響しません
+2. **コスト注意**: 各プロバイダーのAPI利用料金が発生します
+3. **レート制限**: 短時間に大量リクエストを送らないよう注意
+4. **環境変数必須**: テストするプロバイダーのAPIキーが設定されている必要があります
+
+---
+
+### 🔄 本番運用でプロバイダーを切り替える場合
+
+テスト結果に基づいてプロバイダーを変更する場合：
+
+```python
+# app/asr_providers.py を編集
+CURRENT_PROVIDER = "aiola"  # テストで最適だったプロバイダー
+CURRENT_MODEL = "jargonic-v2"
+
+# git push でデプロイ
+```
+
+---
+
+### 💡 Tips
+
+- **複数音声でテスト**: 1つの音声だけでなく、複数の音声サンプルで比較すると信頼性が向上
+- **環境の違いも確認**: 騒音環境、複数話者、アクセントなど、様々な条件でテスト
+- **処理時間の平均**: 複数回実行して処理時間の平均を取る
+- **定期的な再評価**: 新モデルがリリースされたら定期的に再比較
 
 ---
 

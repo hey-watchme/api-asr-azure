@@ -724,16 +724,41 @@ class AiolaProvider(ASRProvider):
             # 処理時間計測終了
             processing_time = time.time() - start_time
 
+            # デバッグ: レスポンスの構造を確認
+            logger.info(f"🔍 aiOla レスポンス型: {type(transcript)}")
+            logger.info(f"🔍 aiOla レスポンス内容: {transcript}")
+
+            if hasattr(transcript, '__dict__'):
+                logger.info(f"🔍 aiOla レスポンス属性: {transcript.__dict__}")
+            elif isinstance(transcript, dict):
+                logger.info(f"🔍 aiOla レスポンスキー: {transcript.keys()}")
+
             # テキスト取得（transcriptの構造に応じて調整が必要な場合がある）
             # aiOla SDKのレスポンス形式に応じて適切に処理
+            transcription_text = None
+
+            # パターン1: .text属性
             if hasattr(transcript, 'text'):
                 transcription_text = transcript.text.strip() if transcript.text else ""
+            # パターン2: .transcript属性
+            elif hasattr(transcript, 'transcript'):
+                transcription_text = transcript.transcript.strip() if transcript.transcript else ""
+            # パターン3: 文字列
             elif isinstance(transcript, str):
                 transcription_text = transcript.strip()
-            elif isinstance(transcript, dict):
-                transcription_text = transcript.get('text', '').strip()
+            # パターン4: dict['text']
+            elif isinstance(transcript, dict) and 'text' in transcript:
+                transcription_text = transcript['text'].strip()
+            # パターン5: dict['transcript']
+            elif isinstance(transcript, dict) and 'transcript' in transcript:
+                transcription_text = transcript['transcript'].strip()
+            # パターン6: dict['transcription']
+            elif isinstance(transcript, dict) and 'transcription' in transcript:
+                transcription_text = transcript['transcription'].strip()
             else:
+                # 最終手段: 文字列化
                 transcription_text = str(transcript).strip()
+                logger.warning(f"⚠️ aiOla: 予期しないレスポンス形式、文字列化しました")
 
             # 発話なしの判定
             if not transcription_text:

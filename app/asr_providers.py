@@ -546,7 +546,7 @@ class DeepgramProvider(ASRProvider):
                 })
 
             # Deepgram API呼び出し（SDK v3の正しいAPI）
-            from deepgram import PrerecordedOptions, FileSource
+            from deepgram import PrerecordedOptions
 
             # オプションをPrerecordedOptionsオブジェクトに変換
             prerecorded_options = PrerecordedOptions(
@@ -558,12 +558,9 @@ class DeepgramProvider(ASRProvider):
                 utterances=options["utterances"],
             )
 
-            # ファイルソースを準備
-            payload = FileSource({"buffer": audio_data})
-
-            # Deepgram API呼び出し
-            response = self.client.listen.prerecorded.v("1").transcribe_file(
-                payload,
+            # Deepgram API呼び出し（公式ドキュメント準拠）
+            response = self.client.listen.rest.v("1").transcribe_file(
+                {"buffer": audio_data},
                 prerecorded_options
             )
 

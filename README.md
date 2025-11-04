@@ -25,15 +25,16 @@
 - プロバイダー: **Deepgram**
 - モデル: **nova-3**
 - デプロイ日: **2025-11-04**
-- ステータス: **✅ 稼働中**
+- ステータス: **✅ 稼働中・動作確認済み**
+- SDK バージョン: **deepgram-sdk==3.7.0**
 
 ### 対応プロバイダー
 
-| プロバイダー | 対応モデル例 | 環境変数 | 状態 |
-|------------|------------|---------|------|
-| **Azure** | ja-JP (日本語), en-US (英語) | AZURE_SPEECH_KEY, AZURE_SERVICE_REGION | ✅ 設定済み |
-| **Groq** | whisper-large-v3-turbo, whisper-large-v3 | GROQ_API_KEY | ✅ 設定済み（現在使用中） |
-| **Deepgram** | nova-3, nova-2, whisper, enhanced | DEEPGRAM_API_KEY | ✅ 設定済み（句読点・話者分離対応） |
+| プロバイダー | 対応モデル例 | 環境変数 | 状態 | SDK情報 |
+|------------|------------|---------|------|----|
+| **Azure** | ja-JP (日本語), en-US (英語) | AZURE_SPEECH_KEY, AZURE_SERVICE_REGION | ✅ 設定済み | azure-cognitiveservices-speech==1.45.0 |
+| **Groq** | whisper-large-v3-turbo, whisper-large-v3 | GROQ_API_KEY | ✅ 設定済み | groq>=0.4.0 |
+| **Deepgram** | nova-3, nova-2, whisper, enhanced | DEEPGRAM_API_KEY | ✅ **稼働中**（句読点・話者分離対応） | deepgram-sdk==3.7.0 |
 
 ### 新しいプロバイダーを追加する方法
 
@@ -167,6 +168,151 @@ git push origin main
 - ✅ スマートフォーマット - 日付、時刻、数字の自動整形
 - ✅ 発話単位での区切り (utterances)
 - ✅ 高精度な信頼度スコア提供
+
+---
+
+## 📚 各プロバイダーの詳細と導入ガイド
+
+### 1. Azure Speech Services
+
+**公式ドキュメント**:
+- メインドキュメント: https://docs.microsoft.com/ja-jp/azure/cognitive-services/speech-service/
+- Python SDK: https://docs.microsoft.com/ja-jp/python/api/azure-cognitiveservices-speech/
+
+**特徴**:
+- ✅ Microsoftが提供する高精度な音声認識サービス
+- ✅ 多言語対応（日本語含む100以上の言語）
+- ✅ リアルタイム・バッチ処理の両方に対応
+- ⚠️ 無料枠の日次クォータ制限あり（UTC 00:00 = JST 09:00 にリセット）
+
+**導入プロセス**:
+
+1. **Azureポータルでリソース作成**:
+   - https://portal.azure.com/ にアクセス
+   - 「Speech Services」リソースを作成
+   - リージョン（例: Japan East）を選択
+
+2. **APIキーとリージョンを取得**:
+   ```bash
+   AZURE_SPEECH_KEY=your-azure-speech-key
+   AZURE_SERVICE_REGION=japaneast
+   ```
+
+3. **requirements.txt**:
+   ```
+   azure-cognitiveservices-speech==1.45.0
+   ```
+
+4. **参照すべき情報**:
+   - SDK リファレンス: https://docs.microsoft.com/ja-jp/python/api/azure-cognitiveservices-speech/
+   - クォータ管理: https://docs.microsoft.com/ja-jp/azure/cognitive-services/speech-service/speech-services-quotas-and-limits
+
+---
+
+### 2. Groq Whisper
+
+**公式ドキュメント**:
+- メインサイト: https://groq.com/
+- API ドキュメント: https://console.groq.com/docs/
+- Python SDK: https://github.com/groq/groq-python
+
+**特徴**:
+- ✅ OpenAI Whisper モデルを高速実行（LPU™ 推論エンジン）
+- ✅ whisper-large-v3-turbo で高速・高精度
+- ✅ シンプルなAPI、使いやすいPython SDK
+- ✅ 無料枠が比較的大きい
+
+**導入プロセス**:
+
+1. **Groq APIキーを取得**:
+   - https://console.groq.com/ でアカウント作成
+   - API Keys セクションでキーを生成
+
+2. **環境変数**:
+   ```bash
+   GROQ_API_KEY=gsk-your-api-key
+   ```
+
+3. **requirements.txt**:
+   ```
+   groq>=0.4.0
+   ```
+
+4. **参照すべき情報**:
+   - API リファレンス: https://console.groq.com/docs/api-reference
+   - モデル一覧: https://console.groq.com/docs/models
+   - Python SDK GitHub: https://github.com/groq/groq-python
+
+---
+
+### 3. Deepgram (現在稼働中) ⭐
+
+**公式ドキュメント**:
+- メインドキュメント: https://developers.deepgram.com/docs/
+- Getting Started (STT): https://developers.deepgram.com/docs/stt/getting-started
+- Python SDK: https://developers.deepgram.com/sdks/python-sdk
+
+**特徴**:
+- ✅ **nova-3**: 最新の高精度モデル（2024年リリース）
+- ✅ 句読点の自動挿入 (punctuate)
+- ✅ 話者分離 (diarize) - 複数話者を自動識別
+- ✅ スマートフォーマット - 日付、時刻、数字の自動整形
+- ✅ 発話単位での区切り (utterances)
+- ✅ 高精度な信頼度スコア提供
+
+**導入プロセス**:
+
+1. **Deepgram APIキーを取得**:
+   - https://console.deepgram.com/ でアカウント作成
+   - API Keys セクションでキーを生成
+
+2. **環境変数**:
+   ```bash
+   DEEPGRAM_API_KEY=your-deepgram-api-key
+   ```
+
+3. **requirements.txt**:
+   ```
+   deepgram-sdk==3.7.0
+   ```
+
+   ⚠️ **重要**: バージョンを `==3.7.0` に固定すること
+   - `>=3.0.0` を指定すると v5.x がインストールされ、APIが異なる
+   - 公式ドキュメントは v3.x 向けと v5.x 向けが混在している
+
+4. **コード例** (SDK v3.7.0):
+   ```python
+   from deepgram import DeepgramClient, PrerecordedOptions
+
+   client = DeepgramClient(api_key=api_key)
+
+   options = PrerecordedOptions(
+       model="nova-3",
+       language="ja",
+       punctuate=True,
+       diarize=True,
+       smart_format=True,
+       utterances=True,
+   )
+
+   response = client.listen.rest.v("1").transcribe_file(
+       source={"buffer": audio_data},
+       options=options
+   )
+   ```
+
+5. **参照すべき情報**:
+   - **Getting Started**: https://developers.deepgram.com/docs/stt/getting-started
+   - **Pre-recorded Audio**: https://developers.deepgram.com/docs/pre-recorded-audio
+   - **Playground（公式サンプルコード）**: https://playground.deepgram.com/
+     - ⚠️ Playgroundのコードが最も正確（ドキュメントよりも信頼できる）
+   - Python SDK v3 Migration Guide: https://developers.deepgram.com/sdks/python-sdk/v2-to-v3-migration
+   - モデル一覧: https://developers.deepgram.com/docs/models-overview
+
+6. **トラブルシューティング時の注意点**:
+   - SDK v3.7.0 の正しいAPI: `client.listen.rest.v("1").transcribe_file()`
+   - SDK v5.x の場合: `client.listen.v1.media.transcribe_file()` （異なるAPI）
+   - ドキュメントが混在しているため、**必ずPlaygroundで確認**すること
 
 ---
 

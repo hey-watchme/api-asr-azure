@@ -170,7 +170,28 @@ jobs:
           echo "AIOLA_API_KEY=${AIOLA_API_KEY}" >> .env
         ENDSSH
 
-    # ステップ7: デプロイスクリプト実行
+    # ステップ7: 古いDockerイメージを削除（ディスク容量確保）
+    - name: Clean up old Docker images on EC2
+      env:
+        EC2_HOST: ${{ secrets.EC2_HOST }}
+        EC2_USER: ${{ secrets.EC2_USER }}
+      run: |
+        echo "🧹 Cleaning up old Docker images..."
+
+        ssh ${EC2_USER}@${EC2_HOST} << 'ENDSSH'
+          echo "📊 Disk usage before cleanup:"
+          df -h | grep /dev/root
+
+          echo "🗑️ Removing unused Docker images..."
+          docker image prune -a -f || true
+
+          echo "📊 Disk usage after cleanup:"
+          df -h | grep /dev/root
+        ENDSSH
+
+        echo "✅ Cleanup completed"
+
+    # ステップ8: デプロイスクリプト実行
     - name: Deploy to EC2 instance
       env:
         EC2_HOST: ${{ secrets.EC2_HOST }}
@@ -201,7 +222,7 @@ jobs:
 
         echo "✅ EC2 deployment completed successfully!"
 
-    # ステップ8: デプロイ成功通知
+    # ステップ9: デプロイ成功通知
     - name: Deployment Success Notification
       if: success()
       run: |
@@ -211,7 +232,7 @@ jobs:
         echo "🏷️ Version: ${{ github.sha }}"
         echo "🤖 ASR Provider: groq/whisper-large-v3-turbo"
 
-    # ステップ9: デプロイ失敗通知
+    # ステップ10: デプロイ失敗通知
     - name: Deployment Failure Notification
       if: failure()
       run: |

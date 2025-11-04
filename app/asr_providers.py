@@ -714,10 +714,16 @@ class AiolaProvider(ASRProvider):
             # audio_fileの位置を先頭に戻す
             audio_file.seek(0)
 
+            # デバッグ: audio_fileの状態確認
+            logger.info(f"🔍 audio_file型: {type(audio_file)}")
+            logger.info(f"🔍 audio_file名: {getattr(audio_file, 'name', 'N/A')}")
+
             # aiOla Jargonic API呼び出し
             # SDKの transcribe_file メソッドを使用
             try:
                 logger.info("🎙️ aiOla API呼び出し開始...")
+                logger.info(f"🔍 呼び出しパラメータ: file={type(audio_file)}, language='ja'")
+
                 transcript = self.client.stt.transcribe_file(
                     file=audio_file,
                     language="ja",  # 日本語

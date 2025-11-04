@@ -33,6 +33,7 @@
 |------------|------------|---------|------|
 | **Azure** | ja-JP (日本語), en-US (英語) | AZURE_SPEECH_KEY, AZURE_SERVICE_REGION | ✅ 設定済み |
 | **Groq** | whisper-large-v3-turbo, whisper-large-v3 | GROQ_API_KEY | ✅ 設定済み（現在使用中） |
+| **Deepgram** | nova-3, nova-2, whisper, enhanced | DEEPGRAM_API_KEY | ✅ 設定済み（句読点・話者分離対応） |
 
 ### プロバイダー切り替え方法
 
@@ -98,6 +99,41 @@ CURRENT_MODEL = "ja-JP"
 ```
 
 git push するだけで即座に戻ります。
+
+#### Deepgram に切り替える場合
+
+**ステップ1: Deepgram APIキーの準備**
+
+1. Deepgram APIキーを取得: https://console.deepgram.com/
+2. 環境変数に追加（ローカル・本番環境の `.env` ファイル）:
+   ```bash
+   DEEPGRAM_API_KEY=your-deepgram-api-key
+   ```
+
+**ステップ2: プロバイダーを切り替え**
+
+```python
+# app/asr_providers.py
+CURRENT_PROVIDER = "deepgram"
+CURRENT_MODEL = "nova-3"
+```
+
+**ステップ3: デプロイ**
+
+```bash
+git add app/asr_providers.py
+git commit -m "feat: Switch to Deepgram nova-3"
+git push origin main
+
+# CI/CDが自動実行（約5分）
+```
+
+**Deepgramの特徴**:
+- ✅ 句読点の自動挿入 (punctuate)
+- ✅ 話者分離 (diarize) - 複数話者を自動識別
+- ✅ スマートフォーマット - 日付、時刻、数字の自動整形
+- ✅ 発話単位での区切り (utterances)
+- ✅ 高精度な信頼度スコア提供
 
 ---
 
@@ -206,37 +242,6 @@ git push するだけで即座に戻ります。
 - **公開URL**: `https://api.hey-watch.me/vibe-analysis-transcriber/`
 - **デプロイ方式**: GitHub Actions CI/CDパイプラインによる自動デプロイ
 
-## 🔧 処理制限モード（コスト最適化機能）
-
-### 概要
-無駄なAPI利用を削減し、コストを最適化するための処理制限機能を実装しています。特定のデバイスIDと時間帯の組み合わせで音声処理をスキップできます。
-
-### 現在の設定（2025年9月23日）
-| デバイスID | 制限時間帯 | 理由 |
-|-----------|-----------|------|
-| `9f7d6e27-98c3-4c19-bdfb-f7fda58b9a93` | 23:00-05:59 | テストデバイス - 夜間処理制限 |
-
-### 動作仕様
-- **ステータス**: 制限対象の処理は`skipped`ステータスが設定されます
-- **ログ**: 処理スキップ時に理由付きでログ出力されます
-- **拡張性**: 今後、環境変数やデータベース管理への移行を想定した設計
-
-### カスタマイズ方法
-`app/services.py`の`RESTRICTED_DEVICES`辞書を編集：
-```python
-RESTRICTED_DEVICES = {
-    'device-id': {
-        'skip_hours': [0,1,2,3,4,5],  # スキップする時間（0-23）
-        'reason': 'スキップ理由'
-    }
-}
-```
-
-### 注意事項
-- この機能は**コスト削減**を目的とした運用制限です
-- 本番運用開始後も、必要に応じて制限対象を調整可能
-- 将来的には環境変数やDB管理への移行を検討
-
 ## 📋 更新履歴
 
 **最新バージョン**: v2.0.0 (2025-10-31)
@@ -297,6 +302,9 @@ AZURE_SERVICE_REGION=japaneast
 
 # Groq API設定（Groqプロバイダー使用時のみ必須）
 GROQ_API_KEY=gsk-your-groq-api-key
+
+# Deepgram API設定（Deepgramプロバイダー使用時のみ必須）
+DEEPGRAM_API_KEY=your-deepgram-api-key
 
 # WatchMeシステム統合設定（必須）
 # Supabase設定 - audio_filesテーブルからファイル情報を取得

@@ -488,6 +488,177 @@ class GroqProvider(ASRProvider):
         return f"groq/{self._model}"
 
 
+class DeepgramProvider(ASRProvider):
+    """Deepgram Nova APIプロバイダー"""
+
+    def __init__(self, model: str = "nova-3"):
+        """
+        Args:
+            model (str): 使用するDeepgramモデル名
+                例: "nova-3", "nova-2", "whisper", "enhanced"
+        """
+        from deepgram import DeepgramClient  # 遅延インポート
+
+        api_key = os.getenv("DEEPGRAM_API_KEY")
+        if not api_key:
+            raise ValueError("DEEPGRAM_API_KEY環境変数が設定されていません")
+
+        self.client = DeepgramClient(api_key)
+        self._model = model
+
+        logger.info(f"Deepgram API初期化完了: model={model}")
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(Exception)
+    )
+    async def transcribe_audio(
+        self,
+        audio_file: BinaryIO,
+        filename: str,
+        detailed: bool = False,
+        high_accuracy: bool = False
+    ) -> Dict[str, Any]:
+        """Deepgram APIで音声ファイルを文字起こし（リトライ付き）"""
+        try:
+            # 処理時間計測開始
+            start_time = time.time()
+
+            # audio_fileの位置を先頭に戻す
+            audio_file.seek(0)
+            audio_data = audio_file.read()
+
+            # Deepgram APIオプション設定
+            options = {
+                "model": self._model,
+                "language": "ja",  # 日本語
+                "punctuate": True,  # 句読点の自動挿入
+                "diarize": True,    # 話者分離
+                "smart_format": True,  # スマートフォーマット（日付、時刻、数字の自動整形）
+                "utterances": True,  # 発話単位での区切り
+            }
+
+            # 高精度モードの場合、追加オプションを設定
+            if high_accuracy:
+                options.update({
+                    "tier": "nova",  # 最高精度
+                })
+
+            # Deepgram API呼び出し
+            response = self.client.listen.rest.v("1").transcribe_file(
+                {"buffer": audio_data},
+                options
+            )
+
+            # 処理時間計測終了
+            processing_time = time.time() - start_time
+
+            # レスポンスから文字起こしテキストを取得
+            if not response or not response.results:
+                return {
+                    "transcription": "",
+                    "processing_time": round(processing_time, 2),
+                    "confidence": 0.0,
+                    "word_count": 0,
+                    "estimated_duration": 0.0,
+                    "no_speech_detected": True
+                }
+
+            # チャンネル情報を取得
+            channels = response.results.channels
+            if not channels or len(channels) == 0:
+                return {
+                    "transcription": "",
+                    "processing_time": round(processing_time, 2),
+                    "confidence": 0.0,
+                    "word_count": 0,
+                    "estimated_duration": 0.0,
+                    "no_speech_detected": True
+                }
+
+            # 最初のチャンネルの最初の代替案を取得
+            alternatives = channels[0].alternatives
+            if not alternatives or len(alternatives) == 0:
+                return {
+                    "transcription": "",
+                    "processing_time": round(processing_time, 2),
+                    "confidence": 0.0,
+                    "word_count": 0,
+                    "estimated_duration": 0.0,
+                    "no_speech_detected": True
+                }
+
+            transcript = alternatives[0].transcript.strip() if alternatives[0].transcript else ""
+
+            # 発話なしの判定
+            if not transcript:
+                return {
+                    "transcription": "",
+                    "processing_time": round(processing_time, 2),
+                    "confidence": 0.0,
+                    "word_count": 0,
+                    "estimated_duration": 0.0,
+                    "no_speech_detected": True
+                }
+
+            # 信頼度を取得（Deepgramは0-1の範囲で提供）
+            confidence = alternatives[0].confidence if hasattr(alternatives[0], 'confidence') else 0.0
+
+            # 単語数計算
+            words = transcript.split()
+            word_count = len(words)
+
+            # 音声の長さを取得（メタデータから）
+            duration = 0.0
+            if hasattr(response.results, 'metadata') and hasattr(response.results.metadata, 'duration'):
+                duration = response.results.metadata.duration
+
+            result = {
+                "transcription": transcript,
+                "processing_time": round(processing_time, 2),
+                "confidence": round(confidence, 2),
+                "word_count": word_count,
+                "estimated_duration": round(duration, 2) if duration > 0 else round(processing_time * 0.8, 2)
+            }
+
+            # 詳細モード：話者分離情報を含める
+            if detailed and hasattr(alternatives[0], 'words'):
+                result["detailed_mode"] = True
+
+                # 話者ごとに文字起こしを整理
+                speakers_info = {}
+                for word in alternatives[0].words:
+                    if hasattr(word, 'speaker'):
+                        speaker_id = word.speaker
+                        if speaker_id not in speakers_info:
+                            speakers_info[speaker_id] = []
+                        speakers_info[speaker_id].append({
+                            "word": word.word,
+                            "start": word.start,
+                            "end": word.end,
+                            "confidence": word.confidence if hasattr(word, 'confidence') else None
+                        })
+
+                if speakers_info:
+                    result["speakers"] = speakers_info
+                    result["speaker_count"] = len(speakers_info)
+
+            return result
+
+        except Exception as e:
+            logger.error(f"❌ Deepgram API呼び出しエラー: {e}")
+            raise HTTPException(status_code=500, detail=f"Deepgram音声処理エラー: {str(e)}")
+
+    @property
+    def provider_name(self) -> str:
+        return "deepgram"
+
+    @property
+    def model_name(self) -> str:
+        return f"deepgram/{self._model}"
+
+
 class ASRFactory:
     """ASRプロバイダーのファクトリークラス"""
 
@@ -497,7 +668,7 @@ class ASRFactory:
         指定されたプロバイダーとモデルでASRProviderインスタンスを作成
 
         Args:
-            provider (str): プロバイダー名 ("azure", "groq")
+            provider (str): プロバイダー名 ("azure", "groq", "deepgram")
             model (str, optional): モデル名。Noneの場合はデフォルトを使用
 
         Returns:
@@ -516,10 +687,14 @@ class ASRFactory:
             default_model = "whisper-large-v3-turbo"
             return GroqProvider(model or default_model)
 
+        elif provider == "deepgram":
+            default_model = "nova-3"
+            return DeepgramProvider(model or default_model)
+
         else:
             raise ValueError(
                 f"未知のプロバイダー: {provider}\n"
-                f"対応プロバイダー: azure, groq"
+                f"対応プロバイダー: azure, groq, deepgram"
             )
 
     @staticmethod

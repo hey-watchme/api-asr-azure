@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # ==========================================
 # この行を変更するだけでプロバイダーを切り替え可能
 CURRENT_PROVIDER = "deepgram"  # "azure", "groq", または "deepgram"
-CURRENT_MODEL = "nova-3"  # Azure: "ja-JP", Groq: "whisper-large-v3-turbo", Deepgram: "nova-3"
+CURRENT_MODEL = "nova-2"  # Azure: "ja-JP", Groq: "whisper-large-v3-turbo", Deepgram: "nova-2"
 # ==========================================
 
 

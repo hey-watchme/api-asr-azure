@@ -686,10 +686,10 @@ CREATE TABLE audio_features (
   time_block TEXT NOT NULL,
 
   -- Vibe Transcriber (ASR)
-  transcriber_result TEXT,                      -- 文字起こしテキスト（TEXT型）
-  transcriber_status TEXT DEFAULT 'pending',
-  transcriber_processed_at TIMESTAMP WITH TIME ZONE,
-  transcriber_error_message TEXT,
+  vibe_transcriber_result TEXT,                 -- 文字起こしテキスト（TEXT型）
+  vibe_transcriber_status TEXT DEFAULT 'pending',
+  vibe_transcriber_processed_at TIMESTAMP WITH TIME ZONE,
+  vibe_transcriber_error_message TEXT,
 
   -- その他のカラム（Behavior Extractor, Emotion Extractorが使用）
   -- behavior_extractor_result JSONB,
@@ -700,7 +700,7 @@ CREATE TABLE audio_features (
 );
 ```
 
-**重要**: このAPIは`transcriber_result`（TEXT型）カラムのみを使用します。
+**重要**: このAPIは`vibe_transcriber_result`（TEXT型）カラムのみを使用します。
 
 ## 🐳 本番環境での運用（推奨）
 
@@ -1269,3 +1269,19 @@ python test_transcribe.py
 - [Azure Speech Service ドキュメント](https://docs.microsoft.com/ja-jp/azure/cognitive-services/speech-service/)
 - [WatchMe Server Configs](https://github.com/matsumotokaya/watchme-server-configs)
 - 本番環境URL: https://api.hey-watch.me/vibe-analysis-transcriber/
+
+---
+
+## 📝 変更履歴
+
+### v2.1.0 (2025-11-09)
+- **カラム名を命名規則に統一**
+  - `transcriber_result` → `vibe_transcriber_result`
+  - `transcriber_status` → `vibe_transcriber_status`
+  - `transcriber_processed_at` → `vibe_transcriber_processed_at`
+  - 命名規則 `{domain}_{technology}_result` に準拠
+
+### v2.0.0 (2025-11-08)
+- **audio_featuresテーブルへの移行完了**
+  - 保存先を`vibe_whisper`から`audio_features`に変更
+  - データ型はTEXT型を維持（シンプルなテキスト）

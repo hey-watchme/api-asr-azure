@@ -226,9 +226,9 @@ class TranscriberService:
                             "device_id": device_id,
                             "date": local_date,  # リクエストから受け取った日付をそのまま使用
                             "time_block": time_block,
-                            "transcriber_result": final_transcription,  # TEXT型カラム
-                            "transcriber_status": "completed",
-                            "transcriber_processed_at": datetime.utcnow().isoformat()  # 現在のUTC時刻をISO形式で保存
+                            "vibe_transcriber_result": final_transcription,  # TEXT型カラム
+                            "vibe_transcriber_status": "completed",
+                            "vibe_transcriber_processed_at": datetime.utcnow().isoformat()  # 現在のUTC時刻をISO形式で保存
                         }
 
                         # upsert（既存データは更新、新規データは挿入）- リトライ付き

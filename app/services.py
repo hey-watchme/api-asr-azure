@@ -221,46 +221,47 @@ class TranscriberService:
                         # 発話なしの判定と明確な区別
                         final_transcription = transcription if transcription else "発話なし"
                         
-                        # vibe_whisperテーブルに保存（発話なしの場合は明確に「発話なし」を保存）
+                        # audio_featuresテーブルに保存（発話なしの場合は明確に「発話なし」を保存）
                         data = {
                             "device_id": device_id,
                             "date": local_date,  # リクエストから受け取った日付をそのまま使用
                             "time_block": time_block,
-                            "transcription": final_transcription,
-                            "created_at": datetime.utcnow().isoformat()  # 現在のUTC時刻をISO形式で保存
+                            "transcriber_result": final_transcription,  # TEXT型カラム
+                            "transcriber_status": "completed",
+                            "transcriber_processed_at": datetime.utcnow().isoformat()  # 現在のUTC時刻をISO形式で保存
                         }
-                        
+
                         # upsert（既存データは更新、新規データは挿入）- リトライ付き
                         max_retries = 3
                         retry_count = 0
                         upsert_success = False
-                        
+
                         while retry_count < max_retries and not upsert_success:
                             try:
                                 if retry_count > 0:
                                     logger.info(f"Supabase upsert retry {retry_count}/{max_retries}")
                                     time.sleep(1 * retry_count)  # 1秒, 2秒, 3秒の遅延
-                                
-                                response = self.supabase.table('vibe_whisper').upsert(data).execute()
-                                
+
+                                response = self.supabase.table('audio_features').upsert(data).execute()
+
                                 # レスポンスログ
                                 status_code = getattr(response, 'status_code', 'N/A')
                                 logger.info(f"Supabase upsert response: data={response.data}, count={response.count}, status_code={status_code}")
-                                
+
                                 # データが返ってこない場合のハンドリング
                                 if not response.data:
                                     logger.warning(f"⚠️ Supabase upsert returned no data (attempt {retry_count + 1}/{max_retries})")
                                     logger.warning(f"   - Request Payload: {data}")
-                                    
+
                                     # データが空でも、既存レコードの更新の場合は成功とみなす
-                                    # vibe_whisperテーブルから既存レコードを確認
-                                    check_response = self.supabase.table('vibe_whisper') \
+                                    # audio_featuresテーブルから既存レコードを確認
+                                    check_response = self.supabase.table('audio_features') \
                                         .select('*') \
                                         .eq('device_id', device_id) \
                                         .eq('date', local_date) \
                                         .eq('time_block', time_block) \
                                         .execute()
-                                    
+
                                     if check_response.data:
                                         logger.info("✅ Existing record found - treating as successful update")
                                         upsert_success = True
@@ -270,7 +271,7 @@ class TranscriberService:
                                             raise Exception(f"Supabase upsert failed after {max_retries} attempts")
                                 else:
                                     upsert_success = True
-                                    
+
                             except Exception as e:
                                 logger.error(f"Supabase upsert error (attempt {retry_count + 1}): {str(e)}")
                                 retry_count += 1

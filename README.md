@@ -675,22 +675,32 @@ AIOLA_API_KEY=ak_6d9069f7ea494a5f9afbc0d04d09b35cba75dd5699b35d230e19209b3bcff8d
 | `failed` | エラー発生 |
 | `quota_exceeded` | Azure利用上限超過 |
 
-### vibe_whisperテーブル
-ASR結果を保存するテーブルです。
+### audio_featuresテーブル
+ASR結果を保存するテーブルです。このテーブルは3つのFeatures API（Transcriber/Behavior/Emotion）の処理結果を統合管理します。
 
 ```sql
--- テーブル構造
-create table public.vibe_whisper (
-  device_id text not null,
-  date date not null,
-  time_block text not null,
-  transcription text null,
-  status text not null default 'pending'::text,
-  created_at timestamp with time zone not null default now(),  -- 処理実行時刻
-  constraint vibe_whisper_pkey primary key (device_id, date, time_block),
-  constraint vibe_whisper_time_block_check check ((time_block ~ '^[0-2][0-9]-[0-5][0-9]$'::text))
+-- Transcriber APIが使用するカラム
+CREATE TABLE audio_features (
+  device_id TEXT NOT NULL,
+  date DATE NOT NULL,
+  time_block TEXT NOT NULL,
+
+  -- Vibe Transcriber (ASR)
+  transcriber_result TEXT,                      -- 文字起こしテキスト（TEXT型）
+  transcriber_status TEXT DEFAULT 'pending',
+  transcriber_processed_at TIMESTAMP WITH TIME ZONE,
+  transcriber_error_message TEXT,
+
+  -- その他のカラム（Behavior Extractor, Emotion Extractorが使用）
+  -- behavior_extractor_result JSONB,
+  -- emotion_extractor_result JSONB,
+  -- ...
+
+  PRIMARY KEY (device_id, date, time_block)
 );
 ```
+
+**重要**: このAPIは`transcriber_result`（TEXT型）カラムのみを使用します。
 
 ## 🐳 本番環境での運用（推奨）
 

@@ -145,11 +145,10 @@ class TranscriberService:
                 files_to_process.append({
                     'file_path': audio_file['file_path'],
                     'device_id': audio_file['device_id'],
-                    'local_date': audio_file['local_date'],
-                    'time_block': audio_file['time_block']
+                    'recorded_at': audio_file['recorded_at']
                 })
                 device_ids.add(audio_file['device_id'])
-                dates.add(audio_file['local_date'])
+                dates.add(audio_file.get('local_date', ''))
         
         # 既存インターフェースの場合（file_pathから情報を抽出）
         else:
@@ -180,8 +179,7 @@ class TranscriberService:
         for audio_file in files_to_process:
             try:
                 file_path = audio_file['file_path']
-                time_block = audio_file['time_block']
-                local_date = audio_file['local_date']
+                recorded_at = audio_file['recorded_at']
                 device_id = audio_file['device_id']
 
                 # 一時ファイルに音声データをダウンロード
@@ -220,12 +218,11 @@ class TranscriberService:
                         
                         # 発話なしの判定と明確な区別
                         final_transcription = transcription if transcription else "発話なし"
-                        
-                        # audio_featuresテーブルに保存（発話なしの場合は明確に「発話なし」を保存）
+
+                        # spot_featuresテーブルに保存（発話なしの場合は明確に「発話なし」を保存）
                         data = {
                             "device_id": device_id,
-                            "date": local_date,  # リクエストから受け取った日付をそのまま使用
-                            "time_block": time_block,
+                            "recorded_at": recorded_at,  # UTC timestamp
                             "vibe_transcriber_result": final_transcription,  # TEXT型カラム
                             "vibe_transcriber_status": "completed",
                             "vibe_transcriber_processed_at": datetime.utcnow().isoformat()  # 現在のUTC時刻をISO形式で保存
@@ -242,7 +239,7 @@ class TranscriberService:
                                     logger.info(f"Supabase upsert retry {retry_count}/{max_retries}")
                                     time.sleep(1 * retry_count)  # 1秒, 2秒, 3秒の遅延
 
-                                response = self.supabase.table('audio_features').upsert(data).execute()
+                                response = self.supabase.table('spot_features').upsert(data).execute()
 
                                 # レスポンスログ
                                 status_code = getattr(response, 'status_code', 'N/A')
@@ -254,12 +251,11 @@ class TranscriberService:
                                     logger.warning(f"   - Request Payload: {data}")
 
                                     # データが空でも、既存レコードの更新の場合は成功とみなす
-                                    # audio_featuresテーブルから既存レコードを確認
-                                    check_response = self.supabase.table('audio_features') \
+                                    # spot_featuresテーブルから既存レコードを確認
+                                    check_response = self.supabase.table('spot_features') \
                                         .select('*') \
                                         .eq('device_id', device_id) \
-                                        .eq('date', local_date) \
-                                        .eq('time_block', time_block) \
+                                        .eq('recorded_at', recorded_at) \
                                         .execute()
 
                                     if check_response.data:

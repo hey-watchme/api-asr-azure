@@ -153,23 +153,29 @@ class TranscriberService:
         # 既存インターフェースの場合（file_pathから情報を抽出）
         else:
             for file_path in file_paths:
-                # file_pathから情報を抽出
-                # 例: files/d067d407-cf73-4174-a9c1-d91fb60d64d0/2025-07-19/14-30/audio.wav
-                parts = file_path.split('/')
-                if len(parts) >= 5:
-                    device_id = parts[1]  # d067d407-cf73-4174-a9c1-d91fb60d64d0
-                    date_part = parts[2]  # 2025-07-19
-                    time_part = parts[3]  # 14-30
-                    
-                    device_ids.add(device_id)
-                    dates.add(date_part)
-                    
-                    files_to_process.append({
-                        'file_path': file_path,
-                        'device_id': device_id,
-                        'local_date': date_part,
-                        'time_block': time_part
-                    })
+                # audio_filesテーブルからdevice_idとrecorded_atを取得
+                try:
+                    audio_file_response = self.supabase.table('audio_files') \
+                        .select('device_id, recorded_at') \
+                        .eq('file_path', file_path) \
+                        .single() \
+                        .execute()
+
+                    if audio_file_response.data:
+                        device_id = audio_file_response.data['device_id']
+                        recorded_at = audio_file_response.data['recorded_at']
+
+                        files_to_process.append({
+                            'file_path': file_path,
+                            'device_id': device_id,
+                            'recorded_at': recorded_at
+                        })
+                        device_ids.add(device_id)
+                    else:
+                        logger.warning(f"audio_filesテーブルにレコードが見つかりません: {file_path}")
+
+                except Exception as e:
+                    logger.error(f"audio_filesテーブルのクエリエラー: {file_path} - {str(e)}")
         
         # 実際の音声ダウンロードと文字起こし処理
         # 処理結果を記録

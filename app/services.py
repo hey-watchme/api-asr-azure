@@ -294,8 +294,7 @@ class TranscriberService:
                             logger.error(f"   file_path: {file_path}")
                         
                         successfully_transcribed.append({
-                            'file_path': file_path,
-                            'time_block': time_block
+                            'file_path': file_path
                         })
                         
                         # 処理結果に応じたログ出力
@@ -363,8 +362,8 @@ class TranscriberService:
                 "device_id": request.device_id,
                 "local_date": request.local_date,
                 "time_blocks_requested": request.time_blocks,
-                "processed_time_blocks": [f['time_block'] for f in successfully_transcribed],
-                "error_time_blocks": [f['time_block'] for f in error_files] if error_files else None,
+                "processed_files": [f['file_path'] for f in successfully_transcribed],
+                "error_files": [f['file_path'] for f in error_files] if error_files else None,
                 "execution_time_seconds": round(execution_time, 1),
                 "message": f"{len(file_paths)}件中{len(successfully_transcribed)}件を{self.asr_provider.provider_name}で正常に処理しました",
                 "asr_provider": self.asr_provider.provider_name,
@@ -380,7 +379,6 @@ class TranscriberService:
                     "errors": len(error_files)
                 },
                 "processed_files": [f['file_path'] for f in successfully_transcribed],
-                "processed_time_blocks": [f['time_block'] for f in successfully_transcribed],
                 "error_files": [f['file_path'] for f in error_files] if error_files else None,
                 "execution_time_seconds": round(execution_time, 1),
                 "message": f"{len(file_paths)}件中{len(successfully_transcribed)}件を{self.asr_provider.provider_name}で正常に処理しました",

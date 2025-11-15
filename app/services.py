@@ -225,10 +225,32 @@ class TranscriberService:
                         # 発話なしの判定と明確な区別
                         final_transcription = transcription if transcription else "発話なし"
 
+                        # Get local_date and local_time from audio_files table
+                        local_date = None
+                        local_time = None
+                        try:
+                            audio_file_response = self.supabase.table('audio_files').select('local_date, local_time').eq(
+                                'device_id', device_id
+                            ).eq(
+                                'recorded_at', recorded_at
+                            ).execute()
+
+                            if audio_file_response.data and len(audio_file_response.data) > 0:
+                                local_date = audio_file_response.data[0].get('local_date')
+                                local_time = audio_file_response.data[0].get('local_time')
+                                logger.info(f"Retrieved local_date from audio_files: {local_date}")
+                                logger.info(f"Retrieved local_time from audio_files: {local_time}")
+                            else:
+                                logger.warning(f"No audio_files record found for device_id={device_id}, recorded_at={recorded_at}")
+                        except Exception as e:
+                            logger.error(f"Error fetching local_date/local_time from audio_files: {e}")
+
                         # spot_featuresテーブルに保存（発話なしの場合は明確に「発話なし」を保存）
                         data = {
                             "device_id": device_id,
                             "recorded_at": recorded_at,  # UTC timestamp
+                            "local_date": local_date,  # Local date from audio_files
+                            "local_time": local_time,  # Local time from audio_files
                             "vibe_transcriber_result": final_transcription,  # TEXT型カラム
                             "vibe_transcriber_status": "completed",
                             "vibe_transcriber_processed_at": datetime.utcnow().isoformat()  # 現在のUTC時刻をISO形式で保存
